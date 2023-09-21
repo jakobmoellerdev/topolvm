@@ -8,6 +8,8 @@
 syntax = "proto3";
 package proto;
 
+import "k8s.io/apimachinery/pkg/api/resource/resource.proto";
+
 option go_package = "github.com/topolvm/topolvm/lvmd/proto";
 
 message Empty {}
@@ -28,6 +30,8 @@ message CreateLVRequest {
     repeated string tags = 3;     // Tags to add to the volume during creation
     string device_class = 4;
     string lvcreate_option_class = 5;
+
+    k8s.io.apimachinery.pkg.api.resource.Quantity size_quantity = 6;
 }
 
 // Represents the response of CreateLV.

@@ -18,7 +18,6 @@ BINDIR := $(shell pwd)/bin
 CONTROLLER_GEN := $(BINDIR)/controller-gen
 STATICCHECK := $(BINDIR)/staticcheck
 CONTAINER_STRUCTURE_TEST := $(BINDIR)/container-structure-test
-PROTOC := PATH=$(BINDIR):$(PATH) $(BINDIR)/protoc -I=$(shell pwd)/include:.
 PACKAGES := unzip lvm2 xfsprogs thin-provisioning-tools patch
 ENVTEST_ASSETS_DIR := $(shell pwd)/testbin
 
@@ -27,6 +26,8 @@ GOOS := $(shell go env GOOS)
 GOARCH := $(shell go env GOARCH)
 GOFLAGS =
 export GOFLAGS
+
+PROTOC := PATH=$(BINDIR):$(PATH) $(BINDIR)/protoc -I=$(shell pwd)/include:.
 
 BUILD_TARGET=hypertopolvm
 TOPOLVM_VERSION ?= devel
@@ -287,6 +288,10 @@ tools: install-kind install-container-structure-test install-helm install-helm-d
 	$(CURL) -o protoc.zip https://github.com/protocolbuffers/protobuf/releases/download/v$(PROTOC_VERSION)/protoc-$(PROTOC_VERSION)-linux-x86_64.zip
 	unzip -o protoc.zip bin/protoc 'include/*'
 	rm -f protoc.zip
+
+	mkdir -p include/k8s.io/apimachinery/pkg/api/resource
+	$(CURL) -o include/k8s.io/apimachinery/pkg/api/resource/resource.proto https://raw.githubusercontent.com/kubernetes/apimachinery/master/pkg/api/resource/generated.proto
+
 	GOBIN=$(BINDIR) go install google.golang.org/protobuf/cmd/protoc-gen-go@v$(PROTOC_GEN_GO_VERSION)
 	GOBIN=$(BINDIR) go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v$(PROTOC_GEN_GO_GRPC_VERSION)
 	GOBIN=$(BINDIR) go install github.com/pseudomuto/protoc-gen-doc/cmd/protoc-gen-doc@v$(PROTOC_GEN_DOC_VERSION)
