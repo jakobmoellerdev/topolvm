@@ -45,8 +45,8 @@ func (s *lvService) CreateLV(_ context.Context, req *proto.CreateLVRequest) (*pr
 		return nil, err
 	}
 	oc := s.ocmapper.LvcreateOptionClass(req.LvcreateOptionClass)
-	requested := req.GetSizeGb() << 30
-	free := uint64(0)
+	requested := req.GetSize()
+	free := int64(0)
 	var pool *command.ThinPool
 	switch dc.Type {
 	case TypeThick:
@@ -72,7 +72,7 @@ func (s *lvService) CreateLV(_ context.Context, req *proto.CreateLVRequest) (*pr
 			})
 			return nil, status.Error(codes.Internal, err.Error())
 		}
-		free = uint64(math.Floor(dc.ThinPoolConfig.OverprovisionRatio*float64(tpu.SizeBytes))) - tpu.VirtualBytes
+		free = int64(math.Floor(dc.ThinPoolConfig.OverprovisionRatio*float64(tpu.SizeBytes))) - tpu.VirtualBytes
 	default:
 		// technically this block will not be hit however make sure we return error
 		// in such cases where deviceclass target is neither thick or thinpool
@@ -133,7 +133,7 @@ func (s *lvService) CreateLV(_ context.Context, req *proto.CreateLVRequest) (*pr
 	return &proto.CreateLVResponse{
 		Volume: &proto.LogicalVolume{
 			Name:     lv.Name(),
-			SizeGb:   lv.Size() >> 30,
+			Size:     lv.Size(),
 			DevMajor: lv.MajorNumber(),
 			DevMinor: lv.MinorNumber(),
 		},
@@ -221,7 +221,7 @@ func (s *lvService) CreateLVSnapshot(_ context.Context, req *proto.CreateLVSnaps
 	// In case of thin-snapshots, the size is the same as the source volume on snapshot creation, and then
 	// gets resized after extension into the correct size
 	sizeOnCreation := sourceLV.Size()
-	desiredSize := req.GetSizeGb() << 30
+	desiredSize := req.GetSize()
 
 	// in case there is no desired size in the request, we can still attempt to create the Snapshot with Source size.
 	if desiredSize == 0 {
@@ -290,7 +290,7 @@ func (s *lvService) CreateLVSnapshot(_ context.Context, req *proto.CreateLVSnaps
 	return &proto.CreateLVSnapshotResponse{
 		Snapshot: &proto.LogicalVolume{
 			Name:     snapLV.Name(),
-			SizeGb:   snapLV.Size() >> 30,
+			Size:     snapLV.Size(),
 			DevMajor: snapLV.MajorNumber(),
 			DevMinor: snapLV.MinorNumber(),
 		},
@@ -324,7 +324,7 @@ func (s *lvService) ResizeLV(_ context.Context, req *proto.ResizeLVRequest) (*pr
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
-	requested := req.GetSizeGb() << 30
+	requested := req.GetSize()
 	current := lv.Size()
 
 	if requested < current {
@@ -337,7 +337,7 @@ func (s *lvService) ResizeLV(_ context.Context, req *proto.ResizeLVRequest) (*pr
 		return nil, status.Error(codes.OutOfRange, "shrinking volume size is not allowed")
 	}
 
-	free := uint64(0)
+	free := int64(0)
 	var pool *command.ThinPool
 	switch dc.Type {
 	case TypeThick:
@@ -363,7 +363,7 @@ func (s *lvService) ResizeLV(_ context.Context, req *proto.ResizeLVRequest) (*pr
 			})
 			return nil, status.Error(codes.Internal, err.Error())
 		}
-		free = uint64(math.Floor(dc.ThinPoolConfig.OverprovisionRatio*float64(tpu.SizeBytes))) - tpu.VirtualBytes
+		free = int64(math.Floor(dc.ThinPoolConfig.OverprovisionRatio*float64(tpu.SizeBytes))) - tpu.VirtualBytes
 	default:
 		// technically this block will not be hit however make sure we return error
 		// in such cases where deviceclass target is neither thick or thinpool

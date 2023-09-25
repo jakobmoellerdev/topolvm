@@ -164,10 +164,9 @@ func (s *LogicalVolumeService) CreateVolume(ctx context.Context, node, dc, oc, n
 				NodeName:            node,
 				DeviceClass:         dc,
 				LvcreateOptionClass: oc,
-				Size:                *resource.NewQuantity(requestGb<<30, resource.BinarySI),
+				Size:                *resource.NewQuantity(requestGb, resource.BinarySI),
 			},
 		}
-
 	} else {
 		// On the other hand, if a volume has a datasource, create a thin snapshot of the source volume with READ-WRITE access.
 		lv = &topolvmv1.LogicalVolume{

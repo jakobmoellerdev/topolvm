@@ -9,8 +9,8 @@ import (
 type vg struct {
 	name string
 	uuid string
-	size uint64
-	free uint64
+	size int64
+	free int64
 }
 
 type lv struct {
@@ -18,15 +18,15 @@ type lv struct {
 	fullName        string
 	uuid            string
 	path            string
-	major           uint64
-	minor           uint64
+	major           int64
+	minor           int64
 	origin          string
-	originSize      uint64
+	originSize      int64
 	poolLV          string
 	tags            []string
 	attr            string
 	vgName          string
-	size            uint64
+	size            int64
 	dataPercent     float64
 	metaDataPercent float64
 }
@@ -52,11 +52,11 @@ func (u *vg) UnmarshalJSON(data []byte) error {
 	u.uuid = temp.UUID
 
 	var convErr error
-	u.size, convErr = strconv.ParseUint(temp.Size, 10, 64)
+	u.size, convErr = strconv.ParseInt(temp.Size, 10, 64)
 	if convErr != nil {
 		return convErr
 	}
-	u.free, convErr = strconv.ParseUint(temp.Free, 10, 64)
+	u.free, convErr = strconv.ParseInt(temp.Free, 10, 64)
 	if convErr != nil {
 		return convErr
 	}
@@ -95,13 +95,13 @@ func (u *lv) UnmarshalJSON(data []byte) error {
 
 	// If LV is not active, major/minor numbers will be -1, ignore conversion
 	// errors which results in 0 for values in this case.
-	u.major, _ = strconv.ParseUint(temp.Major, 10, 32)
-	u.minor, _ = strconv.ParseUint(temp.Minor, 10, 32)
+	u.major, _ = strconv.ParseInt(temp.Major, 10, 32)
+	u.minor, _ = strconv.ParseInt(temp.Minor, 10, 32)
 
 	var convErr error
 	u.origin = temp.Origin
 	if len(temp.OriginSize) > 0 {
-		u.originSize, convErr = strconv.ParseUint(temp.OriginSize, 10, 64)
+		u.originSize, convErr = strconv.ParseInt(temp.OriginSize, 10, 64)
 		if convErr != nil {
 			return convErr
 		}
@@ -113,7 +113,7 @@ func (u *lv) UnmarshalJSON(data []byte) error {
 	u.vgName = temp.VgName
 
 	if len(temp.Size) > 0 {
-		u.size, convErr = strconv.ParseUint(temp.Size, 10, 64)
+		u.size, convErr = strconv.ParseInt(temp.Size, 10, 64)
 		if convErr != nil {
 			return convErr
 		}

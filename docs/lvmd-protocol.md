@@ -51,6 +51,7 @@ Represents the input for CreateLV.
 | tags | [string](#string) | repeated | Tags to add to the volume during creation |
 | device_class | [string](#string) |  |  |
 | lvcreate_option_class | [string](#string) |  |  |
+| size_quantity | [k8s.io.apimachinery.pkg.api.resource.Quantity](#k8s.io.apimachinery.pkg.api.resource.Quantity) |  |  |
 
 
 

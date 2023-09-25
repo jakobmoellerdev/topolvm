@@ -93,12 +93,12 @@ func (g *VolumeGroup) Name() string {
 }
 
 // Size returns the capacity of the volume group in bytes.
-func (g *VolumeGroup) Size() (uint64, error) {
+func (g *VolumeGroup) Size() (int64, error) {
 	return g.state.size, nil
 }
 
 // Free returns the free space of the volume group in bytes.
-func (g *VolumeGroup) Free() (uint64, error) {
+func (g *VolumeGroup) Free() (int64, error) {
 	return g.state.free, nil
 }
 
@@ -213,7 +213,7 @@ func (g *VolumeGroup) ListVolumes() []*LogicalVolume {
 // name is a name of creating volume. size is volume size in bytes. volTags is a
 // list of tags to add to the volume.
 // lvcreateOptions are additional arguments to pass to lvcreate.
-func (g *VolumeGroup) CreateVolume(name string, size uint64, tags []string, stripe uint, stripeSize string,
+func (g *VolumeGroup) CreateVolume(name string, size int64, tags []string, stripe uint, stripeSize string,
 	lvcreateOptions []string) (*LogicalVolume, error) {
 	lvcreateArgs := []string{"-n", name, "-L", fmt.Sprintf("%vg", size>>30), "-W", "y", "-y"}
 	for _, tag := range tags {
@@ -283,8 +283,8 @@ type ThinPool struct {
 type ThinPoolUsage struct {
 	DataPercent     float64
 	MetadataPercent float64
-	VirtualBytes    uint64
-	SizeBytes       uint64
+	VirtualBytes    int64
+	SizeBytes       int64
 }
 
 func fullName(name string, vg *VolumeGroup) string {
@@ -314,12 +314,12 @@ func (t *ThinPool) VG() *VolumeGroup {
 }
 
 // Size returns a size of the thin pool.
-func (t *ThinPool) Size() uint64 {
+func (t *ThinPool) Size() int64 {
 	return t.state.size
 }
 
 // Resize the thin pool capacity.
-func (t *ThinPool) Resize(newSize uint64) error {
+func (t *ThinPool) Resize(newSize int64) error {
 	if t.state.size == newSize {
 		return nil
 	}
@@ -351,7 +351,7 @@ func (t *ThinPool) FindVolume(name string) (*LogicalVolume, error) {
 }
 
 // CreateVolume creates a thin volume from this pool.
-func (t *ThinPool) CreateVolume(name string, size uint64, tags []string, stripe uint, stripeSize string, lvcreateOptions []string) (*LogicalVolume, error) {
+func (t *ThinPool) CreateVolume(name string, size int64, tags []string, stripe uint, stripeSize string, lvcreateOptions []string) (*LogicalVolume, error) {
 
 	lvcreateArgs := []string{"-T", t.FullName(), "-n", name, "-V", fmt.Sprintf("%vg", size>>30), "-W", "y", "-y"}
 	for _, tag := range tags {
@@ -399,7 +399,7 @@ type LogicalVolume struct {
 	name     string
 	path     string
 	vg       *VolumeGroup
-	size     uint64
+	size     int64
 	origin   *string
 	pool     *string
 	devMajor uint32
@@ -407,7 +407,7 @@ type LogicalVolume struct {
 	tags     []string
 }
 
-func newLogicalVolume(name, path string, vg *VolumeGroup, size uint64, origin, pool *string, major, minor uint32, tags []string) *LogicalVolume {
+func newLogicalVolume(name, path string, vg *VolumeGroup, size int64, origin, pool *string, major, minor uint32, tags []string) *LogicalVolume {
 	fullname := fullName(name, vg)
 	return &LogicalVolume{
 		fullname,
@@ -444,7 +444,7 @@ func (l *LogicalVolume) VG() *VolumeGroup {
 }
 
 // Size returns a size of the volume.
-func (l *LogicalVolume) Size() uint64 {
+func (l *LogicalVolume) Size() int64 {
 	return l.size
 }
 
@@ -494,7 +494,7 @@ func (l *LogicalVolume) Tags() []string {
 // If this is a thin-provisioning volume, snapshots can be
 // created unconditionally.  Else, snapshots can be created
 // only for non-snapshot volumes.
-func (l *LogicalVolume) Snapshot(name string, cowSize uint64, tags []string, thin bool) (*LogicalVolume, error) {
+func (l *LogicalVolume) Snapshot(name string, cowSize int64, tags []string, thin bool) (*LogicalVolume, error) {
 	if l.pool == nil {
 		if l.IsSnapshot() {
 			return nil, fmt.Errorf("snapshot of snapshot")
@@ -504,22 +504,7 @@ func (l *LogicalVolume) Snapshot(name string, cowSize uint64, tags []string, thi
 		// for creating a thin-snapshot, max COW is irrelevant since the snapshot gets resized based on the
 		// thin-pool. Thus one should not define a size argument, otherwise the snapshot is not thin.
 		if !thin {
-			var gbSize uint64
-			if cowSize > 0 {
-				gbSize = cowSize >> 30
-			} else {
-				gbSize = (l.size * 2 / 10) >> 30
-				if gbSize > cowMax {
-					gbSize = cowMax
-				}
-			}
-			if gbSize < cowMin {
-				gbSize = cowMin
-			}
-			if l.size < (gbSize << 30) {
-				gbSize = (l.size >> 30) << 30
-			}
-			args = append(args, "-L", fmt.Sprintf("%vg", gbSize))
+			args = append(args, "-L", fmt.Sprintf("%v", cowSize))
 		}
 
 		if err := callLVM("lvcreate", args...); err != nil {
@@ -577,7 +562,7 @@ func (l *LogicalVolume) Activate(access string) error {
 
 // Resize this volume.
 // newSize is a new size of this volume in bytes.
-func (l *LogicalVolume) Resize(newSize uint64) error {
+func (l *LogicalVolume) Resize(newSize int64) error {
 	if l.size > newSize {
 		return fmt.Errorf("volume cannot be shrunk")
 	}

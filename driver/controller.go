@@ -164,7 +164,7 @@ func (s controllerServerNoLocked) CreateVolume(ctx context.Context, req *csi.Cre
 		}
 	}
 
-	requestGb, err := convertRequestCapacity(req.GetCapacityRange().GetRequiredBytes(), req.GetCapacityRange().GetLimitBytes())
+	requestSize, err := convertRequestCapacity(req.GetCapacityRange().GetRequiredBytes(), req.GetCapacityRange().GetLimitBytes())
 	if err != nil {
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
@@ -178,8 +178,8 @@ func (s controllerServerNoLocked) CreateVolume(ctx context.Context, req *csi.Cre
 		}
 
 		// check if the volume is equal or bigger than the source volume.
-		sourceSizeGb := sourceVol.Spec.Size.Value() >> 30
-		if requestGb < sourceSizeGb {
+		sourceSize := sourceVol.Spec.Size.Value()
+		if requestSize < sourceSize {
 			return nil, status.Error(codes.OutOfRange, "requested size is smaller than the size of the source")
 		}
 		// If a volume has a source, it has to provisioned on the same node and device class as the source volume.
@@ -243,7 +243,7 @@ func (s controllerServerNoLocked) CreateVolume(ctx context.Context, req *csi.Cre
 			if nodeName == "" {
 				return nil, status.Error(codes.Internal, "can not find any node")
 			}
-			if capacity < (requestGb << 30) {
+			if capacity < requestSize {
 				return nil, status.Errorf(codes.ResourceExhausted, "can not find enough volume space %d", capacity)
 			}
 			node = nodeName
@@ -275,7 +275,7 @@ func (s controllerServerNoLocked) CreateVolume(ctx context.Context, req *csi.Cre
 
 	name = strings.ToLower(name)
 
-	volumeID, err := s.lvService.CreateVolume(ctx, node, deviceClass, lvcreateOptionClass, name, sourceName, requestGb)
+	volumeID, err := s.lvService.CreateVolume(ctx, node, deviceClass, lvcreateOptionClass, name, sourceName, requestSize)
 	if err != nil {
 		_, ok := status.FromError(err)
 		if !ok {
@@ -286,7 +286,7 @@ func (s controllerServerNoLocked) CreateVolume(ctx context.Context, req *csi.Cre
 
 	return &csi.CreateVolumeResponse{
 		Volume: &csi.Volume{
-			CapacityBytes: requestGb << 30,
+			CapacityBytes: requestSize,
 			VolumeId:      volumeID,
 			ContentSource: source,
 			AccessibleTopology: []*csi.Topology{
