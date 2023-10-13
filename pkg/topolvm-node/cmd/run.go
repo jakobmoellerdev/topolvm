@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
+	"github.com/cybozu-go/log"
 	"github.com/spf13/viper"
 	"github.com/topolvm/topolvm"
 	topolvmlegacyv1 "github.com/topolvm/topolvm/api/legacy/v1"
@@ -15,6 +16,7 @@ import (
 	clientwrapper "github.com/topolvm/topolvm/client"
 	"github.com/topolvm/topolvm/controllers"
 	"github.com/topolvm/topolvm/driver"
+	"github.com/topolvm/topolvm/lvmd"
 	"github.com/topolvm/topolvm/lvmd/proto"
 	"github.com/topolvm/topolvm/runners"
 	"google.golang.org/grpc"
@@ -27,6 +29,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
+	"sigs.k8s.io/yaml"
 	//+kubebuilder:scaffold:imports
 )
 
@@ -63,17 +66,29 @@ func subMain() error {
 	client := clientwrapper.NewWrappedClient(mgr.GetClient())
 	apiReader := clientwrapper.NewWrappedReader(mgr.GetAPIReader(), mgr.GetClient().Scheme())
 
-	dialer := &net.Dialer{}
-	dialFunc := func(ctx context.Context, a string) (net.Conn, error) {
-		return dialer.DialContext(ctx, "unix", a)
-	}
-	conn, err := grpc.Dial(config.lvmdSocket, grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithContextDialer(dialFunc))
-	if err != nil {
-		return err
-	}
-	defer conn.Close()
+	var lvclnt proto.LVServiceClient
+	var vgclnt proto.VGServiceClient
 
-	lvcontroller := controllers.NewLogicalVolumeReconciler(client, nodename, conn)
+	if config.llvmd {
+		if err := loadConfFile(cfgFilePath); err != nil {
+			return err
+		}
+		dcm := lvmd.NewDeviceClassManager(config.lvmd.DeviceClasses)
+		ocm := lvmd.NewLvcreateOptionClassManager(config.lvmd.LvcreateOptionClasses)
+		_, lvclnt, _, vgclnt = lvmd.NewLocal(dcm, ocm)
+	} else {
+		dialer := &net.Dialer{}
+		dialFunc := func(ctx context.Context, a string) (net.Conn, error) {
+			return dialer.DialContext(ctx, "unix", a)
+		}
+		conn, err := grpc.Dial(config.lvmdSocket, grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithContextDialer(dialFunc))
+		if err != nil {
+			return err
+		}
+		defer conn.Close()
+	}
+
+	lvcontroller := controllers.NewLogicalVolumeReconcilerWithServices(client, nodename, vgclnt, lvclnt)
 	if err := lvcontroller.SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "LogicalVolume")
 		return err
@@ -81,7 +96,7 @@ func subMain() error {
 	//+kubebuilder:scaffold:builder
 
 	// Add health checker to manager
-	checker := runners.NewChecker(checkFunc(conn, apiReader), 1*time.Minute)
+	checker := runners.NewChecker(checkFunc(vgclnt, apiReader), 1*time.Minute)
 	if err := mgr.Add(checker); err != nil {
 		return err
 	}
@@ -89,7 +104,7 @@ func subMain() error {
 	// Add metrics exporter to manager.
 	// Note that grpc.ClientConn can be shared with multiple stubs/services.
 	// https://github.com/grpc/grpc-go/tree/master/examples/features/multiplex
-	if err := mgr.Add(runners.NewMetricsExporter(conn, client, nodename)); err != nil {
+	if err := mgr.Add(runners.NewMetricsExporter(vgclnt, client, nodename)); err != nil {
 		return err
 	}
 
@@ -99,7 +114,7 @@ func subMain() error {
 	}
 	grpcServer := grpc.NewServer(grpc.UnaryInterceptor(ErrorLoggingInterceptor))
 	csi.RegisterIdentityServer(grpcServer, driver.NewIdentityServer(checker.Ready))
-	nodeServer, err := driver.NewNodeServer(nodename, conn, mgr)
+	nodeServer, err := driver.NewNodeServer(nodename, vgclnt, lvclnt, mgr)
 	if err != nil {
 		return err
 	}
@@ -120,13 +135,12 @@ func subMain() error {
 
 //+kubebuilder:rbac:groups=storage.k8s.io,resources=csidrivers,verbs=get;list;watch
 
-func checkFunc(conn *grpc.ClientConn, r client.Reader) func() error {
-	vgs := proto.NewVGServiceClient(conn)
+func checkFunc(clnt proto.VGServiceClient, r client.Reader) func() error {
 	return func() error {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 
-		if _, err := vgs.GetFreeBytes(ctx, &proto.GetFreeBytesRequest{DeviceClass: topolvm.DefaultDeviceClassName}); err != nil {
+		if _, err := clnt.GetFreeBytes(ctx, &proto.GetFreeBytesRequest{DeviceClass: topolvm.DefaultDeviceClassName}); err != nil {
 			return err
 		}
 
@@ -141,4 +155,21 @@ func ErrorLoggingInterceptor(ctx context.Context, req interface{}, info *grpc.Un
 		ctrl.Log.Error(err, "error on grpc call", "method", info.FullMethod)
 	}
 	return resp, err
+}
+
+func loadConfFile(cfgFilePath string) error {
+	b, err := os.ReadFile(cfgFilePath)
+	if err != nil {
+		return err
+	}
+	err = yaml.Unmarshal(b, config.lvmd)
+	if err != nil {
+		return err
+	}
+	log.Info("configuration file loaded: ", map[string]interface{}{
+		"device_classes": config.lvmd.DeviceClasses,
+		"socket_name":    config.lvmd.SocketName,
+		"file_name":      cfgFilePath,
+	})
+	return nil
 }
