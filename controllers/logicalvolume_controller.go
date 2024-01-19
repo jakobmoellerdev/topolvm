@@ -148,6 +148,10 @@ func (r *LogicalVolumeReconciler) removeLVIfExists(ctx context.Context, log logr
 	// Finalizer's process ( RemoveLV then removeString ) is not atomic,
 	// so checking existence of LV to ensure its idempotence
 	respList, err := r.vgService.GetLVList(ctx, &proto.GetLVListRequest{DeviceClass: lv.Spec.DeviceClass})
+	if status.Code(err) == codes.NotFound {
+		log.Info("LV already removed", "name", lv.Name, "uid", lv.UID)
+		return nil
+	}
 	if err != nil {
 		log.Error(err, "failed to list LV")
 		return err
@@ -165,7 +169,6 @@ func (r *LogicalVolumeReconciler) removeLVIfExists(ctx context.Context, log logr
 		log.Info("removed LV", "name", lv.Name, "uid", lv.UID)
 		return nil
 	}
-	log.Info("LV already removed", "name", lv.Name, "uid", lv.UID)
 	return nil
 }
 

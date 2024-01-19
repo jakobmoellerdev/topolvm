@@ -3,9 +3,24 @@ package command
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"strconv"
 	"strings"
+
+	"sigs.k8s.io/controller-runtime/pkg/log"
 )
+
+type VgReport struct {
+	Report []struct {
+		VG []vg `json:"vg"`
+	} `json:"report"`
+}
+
+type LvReport struct {
+	Report []struct {
+		LV []lv `json:"lv"`
+	} `json:"report"`
+}
 
 type vg struct {
 	name string
@@ -32,18 +47,18 @@ type lv struct {
 	metaDataPercent float64
 }
 
+type vgInternal struct {
+	Name string `json:"vg_name"`
+	UUID string `json:"vg_uuid"`
+	Size string `json:"vg_size"`
+	Free string `json:"vg_free"`
+}
+
 func (u *lv) isThinPool() bool {
 	return u.attr[0] == 't'
 }
 
 func (u *vg) UnmarshalJSON(data []byte) error {
-	type vgInternal struct {
-		Name string `json:"vg_name"`
-		UUID string `json:"vg_uuid"`
-		Size string `json:"vg_size"`
-		Free string `json:"vg_free"`
-	}
-
 	var temp vgInternal
 	if err := json.Unmarshal(data, &temp); err != nil {
 		return err
@@ -65,25 +80,25 @@ func (u *vg) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-func (u *lv) UnmarshalJSON(data []byte) error {
-	type lvInternal struct {
-		Name            string `json:"lv_name"`
-		FullName        string `json:"lv_full_name"`
-		UUID            string `json:"lv_uuid"`
-		Path            string `json:"lv_path"`
-		Major           string `json:"lv_kernel_major"`
-		Minor           string `json:"lv_kernel_minor"`
-		Origin          string `json:"origin"`
-		OriginSize      string `json:"origin_size"`
-		PoolLV          string `json:"pool_lv"`
-		Tags            string `json:"lv_tags"`
-		Attr            string `json:"lv_attr"`
-		VgName          string `json:"vg_name"`
-		Size            string `json:"lv_size"`
-		DataPercent     string `json:"data_percent"`
-		MetaDataPercent string `json:"metadata_percent"`
-	}
+type lvInternal struct {
+	Name            string `json:"lv_name"`
+	FullName        string `json:"lv_full_name"`
+	UUID            string `json:"lv_uuid"`
+	Path            string `json:"lv_path"`
+	Major           string `json:"lv_kernel_major"`
+	Minor           string `json:"lv_kernel_minor"`
+	Origin          string `json:"origin"`
+	OriginSize      string `json:"origin_size"`
+	PoolLV          string `json:"pool_lv"`
+	Tags            string `json:"lv_tags"`
+	Attr            string `json:"lv_attr"`
+	VgName          string `json:"vg_name"`
+	Size            string `json:"lv_size"`
+	DataPercent     string `json:"data_percent"`
+	MetaDataPercent string `json:"metadata_percent"`
+}
 
+func (u *lv) UnmarshalJSON(data []byte) error {
 	var temp lvInternal
 	if err := json.Unmarshal(data, &temp); err != nil {
 		return err
@@ -136,7 +151,7 @@ func (u *lv) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-func parseFullReportResult(data []byte) ([]vg, []lv, error) {
+func parseFullReportResult(data io.ReadCloser) ([]vg, []lv, error) {
 	type fullReportResult struct {
 		Report []struct {
 			VG []vg `json:"vg"`
@@ -145,7 +160,7 @@ func parseFullReportResult(data []byte) ([]vg, []lv, error) {
 	}
 
 	var result fullReportResult
-	if err := json.Unmarshal(data, &result); err != nil {
+	if err := json.NewDecoder(data).Decode(&result); err != nil {
 		return nil, nil, err
 	}
 
@@ -173,10 +188,15 @@ func getLVMState(ctx context.Context) ([]vg, []lv, error) {
 		"--configreport", "pvseg", "-o,",
 		"--configreport", "seg", "-o,",
 	}
-	stdout, err := callLVMWithStdout(ctx, "fullreport", args...)
+	streamed, err := callLVMMStreamed(ctx, append([]string{"fullreport"}, args...)...)
+	defer func() {
+		// this will wait for the process to be released.
+		if err := streamed.Close(); err != nil {
+			log.FromContext(ctx).Error(err, "failed to properly close command")
+		}
+	}()
 	if err != nil {
 		return nil, nil, err
 	}
-
-	return parseFullReportResult(stdout)
+	return parseFullReportResult(streamed)
 }

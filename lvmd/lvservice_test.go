@@ -108,7 +108,7 @@ func TestLVService(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	lv, err := vg.FindVolume("test1")
+	lv, err := vg.FindVolume(ctx, "test1")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -148,7 +148,7 @@ func TestLVService(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	lv, err = vg.FindVolume("test1")
+	lv, err = vg.FindVolume(ctx, "test1")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -183,7 +183,7 @@ func TestLVService(t *testing.T) {
 	if err := vg.Update(ctx); err != nil {
 		t.Fatal(err)
 	}
-	_, err = vg.FindVolume("test1")
+	_, err = vg.FindVolume(ctx, "test1")
 	if err != command.ErrNotFound {
 		t.Error("unexpected error: ", err)
 	}
@@ -221,7 +221,7 @@ func TestLVService(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	lv, err = pool.FindVolume("testp1")
+	lv, err = pool.FindVolume(ctx, "testp1")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -261,7 +261,7 @@ func TestLVService(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	lv, err = pool.FindVolume("testp1")
+	lv, err = pool.FindVolume(ctx, "testp1")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -283,7 +283,7 @@ func TestLVService(t *testing.T) {
 	if err := vg.Update(ctx); err != nil {
 		t.Fatal(err)
 	}
-	_, err = pool.FindVolume("test1")
+	_, err = pool.FindVolume(ctx, "test1")
 	if err != command.ErrNotFound {
 		t.Error("unexpected error: ", err)
 	}
@@ -324,7 +324,7 @@ func TestLVService(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	lv, err = pool.FindVolume("sourceVol")
+	lv, err = pool.FindVolume(ctx, "sourceVol")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -380,7 +380,7 @@ func TestLVService(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	lv, err = pool.FindVolume("snap1")
+	lv, err = pool.FindVolume(ctx, "snap1")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -432,7 +432,7 @@ func TestLVService(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	lv, err = pool.FindVolume("restoredsnap1")
+	lv, err = pool.FindVolume(ctx, "restoredsnap1")
 	if err != nil {
 		t.Fatal(err)
 	}
