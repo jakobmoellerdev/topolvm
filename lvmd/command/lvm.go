@@ -204,13 +204,13 @@ func (vg *VolumeGroup) ListVolumes(ctx context.Context, name string) (map[string
 
 	for _, lv := range lvs {
 		if !lv.isThinPool() {
-			ret[lv.name] = vg.convertLV(&lv)
+			ret[lv.name] = vg.convertLV(lv)
 		}
 	}
 	return ret, nil
 }
 
-func (vg *VolumeGroup) convertLV(lv *lv) *LogicalVolume {
+func (vg *VolumeGroup) convertLV(lv lv) *LogicalVolume {
 	size := lv.size
 
 	var origin *string
