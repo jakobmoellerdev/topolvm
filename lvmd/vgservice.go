@@ -154,7 +154,7 @@ func (s *vgService) send(server proto.VGService_WatchServer) error {
 			return status.Error(codes.Internal, err.Error())
 		}
 
-		pools, err := vg.ListPools(server.Context())
+		pools, err := vg.ListPools(server.Context(), "")
 		if err != nil {
 			return status.Error(codes.Internal, err.Error())
 		}

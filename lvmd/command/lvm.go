@@ -24,18 +24,16 @@ type LVInfo map[string]string
 type VolumeGroup struct {
 	state vg
 	// internal lvs for use with getLVMState, should not be used otherwise as fields are fetched dynamically
-	reportLvs []lv
+	reportLvs map[string]lv
 }
 
 // getLVMState returns the current state of lvm lvs for the given volume group.
 // If lvname is empty, all lvs are returned. Otherwise, only the lv with the given name is returned or an error if not found.
-func getLVs(ctx context.Context, vg *VolumeGroup, lvname string) ([]lv, error) {
+func getLVs(ctx context.Context, vg *VolumeGroup, lvname string) (map[string]lv, error) {
 	if len(vg.reportLvs) > 0 {
 		if lvname != "" {
-			for _, reportLv := range vg.reportLvs {
-				if reportLv.name == lvname {
-					return []lv{reportLv}, nil
-				}
+			if lvFromMap, ok := vg.reportLvs[lvname]; ok {
+				return map[string]lv{lvname: lvFromMap}, nil
 			}
 			return nil, ErrNotFound
 		}
@@ -77,7 +75,12 @@ func getLVs(ctx context.Context, vg *VolumeGroup, lvname string) ([]lv, error) {
 		return nil, ErrNotFound
 	}
 
-	return lvs, nil
+	lvmap := make(map[string]lv, len(lvs))
+	for _, lv := range lvs {
+		lvmap[lv.name] = lv
+	}
+
+	return lvmap, nil
 }
 
 func (vg *VolumeGroup) Update(ctx context.Context) error {
@@ -144,11 +147,11 @@ func SearchVolumeGroupList(vgs []*VolumeGroup, name string) (*VolumeGroup, error
 	return nil, ErrNotFound
 }
 
-func filter_lv(vg_name string, lvs []lv) []lv {
-	var filtered []lv
+func filter_lv(vgName string, lvs []lv) map[string]lv {
+	filtered := map[string]lv{}
 	for _, l := range lvs {
-		if l.vgName == vg_name {
-			filtered = append(filtered, l)
+		if l.vgName == vgName {
+			filtered[l.name] = l
 		}
 	}
 	return filtered
@@ -187,14 +190,21 @@ func (vg *VolumeGroup) FindVolume(ctx context.Context, name string) (*LogicalVol
 func (vg *VolumeGroup) ListVolumes(ctx context.Context, name string) (map[string]*LogicalVolume, error) {
 	ret := map[string]*LogicalVolume{}
 
-	lvs, err := getLVs(ctx, vg, name)
-	if err != nil {
-		return nil, err
+	var lvs map[string]lv
+	// use fast path if we have the lvs already through the report
+	if vg.reportLvs != nil {
+		lvs = vg.reportLvs
+	} else {
+		var err error
+		// skip ErrNotFound because an empty list is a valid response
+		if lvs, err = getLVs(ctx, vg, name); err != nil && !errors.Is(err, ErrNotFound) {
+			return nil, err
+		}
 	}
 
-	for i, lv := range lvs {
+	for _, lv := range lvs {
 		if !lv.isThinPool() {
-			ret[lv.name] = vg.convertLV(&lvs[i])
+			ret[lv.name] = vg.convertLV(&lv)
 		}
 	}
 	return ret, nil
@@ -257,24 +267,37 @@ func (vg *VolumeGroup) CreateVolume(ctx context.Context, name string, size uint6
 
 // FindPool finds a named thin pool in this volume group.
 func (vg *VolumeGroup) FindPool(ctx context.Context, name string) (*ThinPool, error) {
-	pools, err := getLVs(ctx, vg, name)
+	pools, err := vg.ListPools(ctx, name)
 	if err != nil {
 		return nil, err
 	}
-	pool := pools[0]
-	return newThinPool(pool.name, vg, pool), nil
+	pool, ok := pools[name]
+	if !ok {
+		return nil, ErrNotFound
+	}
+
+	return pool, nil
 }
 
 // ListPools lists all thin pool volumes in this volume group.
-func (vg *VolumeGroup) ListPools(ctx context.Context) ([]*ThinPool, error) {
-	var ret []*ThinPool
-	lvs, err := getLVs(ctx, vg, "")
-	if err != nil {
-		return nil, err
+func (vg *VolumeGroup) ListPools(ctx context.Context, poolname string) (map[string]*ThinPool, error) {
+	ret := map[string]*ThinPool{}
+
+	var lvs map[string]lv
+	// use fast path if we have the lvs already through the report
+	if vg.reportLvs != nil {
+		lvs = vg.reportLvs
+	} else {
+		var err error
+		// skip ErrNotFound because an empty list is a valid response
+		if lvs, err = getLVs(ctx, vg, poolname); err != nil && !errors.Is(err, ErrNotFound) {
+			return nil, err
+		}
 	}
+
 	for _, lv := range lvs {
 		if lv.isThinPool() {
-			ret = append(ret, newThinPool(lv.name, vg, lv))
+			ret[lv.name] = newThinPool(lv.name, vg, lv)
 		}
 	}
 	return ret, nil
@@ -307,10 +330,10 @@ func fullName(name string, vg *VolumeGroup) string {
 	return fmt.Sprintf("%v/%v", vg.Name(), name)
 }
 
-func newThinPool(name string, vg *VolumeGroup, lvm_lv lv) *ThinPool {
+func newThinPool(name string, vg *VolumeGroup, lvmLv lv) *ThinPool {
 	return &ThinPool{
 		vg,
-		lvm_lv,
+		lvmLv,
 	}
 }
 
