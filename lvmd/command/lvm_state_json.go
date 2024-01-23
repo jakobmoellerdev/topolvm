@@ -22,13 +22,11 @@ func parseFullReportResult(data io.ReadCloser) ([]vg, []lv, error) {
 		return nil, nil, err
 	}
 
-	var vgs []vg
-	var lvs []lv
-	for _, report := range result.Report {
-		vgs = append(vgs, report.VG...)
-		lvs = append(lvs, report.LV...)
+	if len(result.Report) != 1 {
+		return []vg{}, []lv{}, nil
 	}
-	return vgs, lvs, nil
+
+	return result.Report[0].VG, result.Report[0].LV, nil
 }
 
 // Issue single lvm command that retrieves everything we need in one call and get the output as JSON
