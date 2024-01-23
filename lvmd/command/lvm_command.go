@@ -36,33 +36,13 @@ func callLVMInto(ctx context.Context, into any, args ...string) error {
 		for scanner.Scan() {
 			log.FromContext(ctx).Info(strings.TrimSpace(scanner.Text()))
 		}
-
-		scanErr := scanner.Err()
-		closeErr := output.Close()
-
-		if closeErr != nil && scanErr != nil {
-			return errors.Join(closeErr, scanErr)
-		} else if closeErr != nil {
-			return closeErr
-		} else if scanErr != nil {
-			return scanErr
-		}
-
-		return nil
+		err = scanner.Err()
+	} else {
+		err = json.NewDecoder(output).Decode(&into)
 	}
-
-	decodeErr := json.NewDecoder(output).Decode(&into)
 	closeErr := output.Close()
 
-	if closeErr != nil && decodeErr != nil {
-		return errors.Join(closeErr, decodeErr)
-	} else if closeErr != nil {
-		return closeErr
-	} else if decodeErr != nil {
-		return decodeErr
-	}
-
-	return nil
+	return errors.Join(closeErr, err)
 }
 
 // callLVMMStreamed calls lvm sub-commands and returns the output as a ReadCloser.
