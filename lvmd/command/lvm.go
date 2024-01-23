@@ -21,15 +21,19 @@ var ErrNotFound = errors.New("not found")
 type LVInfo map[string]string
 
 // VolumeGroup represents a volume group of linux lvm.
+// The state should be considered immutable and will not automatically update.
+// The Update method should be called to refresh the state in case it is known that the state may have changed.
 type VolumeGroup struct {
 	state vg
-	// internal lvs for use with getLVMState, should not be used otherwise as fields are fetched dynamically
+	// reportLvs use with getLVMState, which populates vg and lv at the same time.
+	// should not be used otherwise as fields are fetched dynamically.
 	reportLvs map[string]lv
 }
 
 // getLVMState returns the current state of lvm lvs for the given volume group.
 // If lvname is empty, all lvs are returned. Otherwise, only the lv with the given name is returned or an error if not found.
 func getLVs(ctx context.Context, vg *VolumeGroup, lvname string) (map[string]lv, error) {
+	// use fast path if we have the lvs already through the report
 	if len(vg.reportLvs) > 0 {
 		if lvname != "" {
 			if lvFromMap, ok := vg.reportLvs[lvname]; ok {
@@ -159,6 +163,7 @@ func filter_lv(vgName string, lvs []lv) map[string]lv {
 
 // ListVolumeGroups lists all volume groups and logical volumes through the lvm state, which
 // is more efficient than calling vgs / lvs for every command.
+// Any VolumeGroup returned will already have the reportLvs populated.
 func ListVolumeGroups(ctx context.Context) ([]*VolumeGroup, error) {
 	vgs, lvs, err := getLVMState(ctx)
 	if err != nil {

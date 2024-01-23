@@ -14,17 +14,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
-// wrapExecCommand calls cmd with args but wrapped to run
-// on the host
-func wrapExecCommand(cmd string, args ...string) *exec.Cmd {
-	if Containerized {
-		args = append([]string{"-m", "-u", "-i", "-n", "-p", "-t", "1", cmd}, args...)
-		cmd = nsenter
-	}
-	c := exec.Command(cmd, args...)
-	return c
-}
-
 // callLVM calls lvm sub-commands and prints the output to the log.
 func callLVM(ctx context.Context, args ...string) error {
 	ctx = log.IntoContext(ctx, log.FromContext(ctx).WithCallDepth(1))
@@ -37,15 +26,17 @@ func callLVMInto(ctx context.Context, into any, args ...string) error {
 	output, err := callLVMMStreamed(ctx, args...)
 	defer func() {
 		// this will wait for the process to be released.
+		// If the process gets interrupted, or has a bad exit status we will log this here.
+		// the decode process can still finish normally.
 		if err := output.Close(); err != nil {
-			log.FromContext(ctx).Error(err, "failed to properly close command")
+			log.FromContext(ctx).Error(err, "failed to run command")
 		}
 	}()
 	if err != nil {
 		return fmt.Errorf("failed to execute command: %v", err)
 	}
 
-	// if we dont decode the output into a struct, we can still log the command results from stdout.
+	// if we don't decode the output into a struct, we can still log the command results from stdout.
 	if into == nil {
 		scanner := bufio.NewScanner(output)
 		for scanner.Scan() {
@@ -68,11 +59,13 @@ func callLVMMStreamed(ctx context.Context, args ...string) (io.ReadCloser, error
 
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
-		return io.NopCloser(strings.NewReader(lvmErrToString(err))), err
+		return nil, err
 	}
+
 	log.FromContext(ctx).Info("invoking command", "args", cmd.Args)
+
 	if err := cmd.Start(); err != nil {
-		return io.NopCloser(strings.NewReader(lvmErrToString(err))), err
+		return nil, err
 	}
 
 	return pipeClosingReadCloser{pipeclose: func() error {
@@ -80,6 +73,17 @@ func callLVMMStreamed(ctx context.Context, args ...string) (io.ReadCloser, error
 		// this will wait for the process exit.
 		return cmd.Wait()
 	}, ReadCloser: stdout}, nil
+}
+
+// wrapExecCommand calls cmd with args but wrapped to run
+// on the host
+func wrapExecCommand(cmd string, args ...string) *exec.Cmd {
+	if Containerized {
+		args = append([]string{"-m", "-u", "-i", "-n", "-p", "-t", "1", cmd}, args...)
+		cmd = nsenter
+	}
+	c := exec.Command(cmd, args...)
+	return c
 }
 
 // pipeClosingReadCloser is a ReadCloser that calls the pipeclose function when Close is called.
@@ -95,15 +99,15 @@ func (p pipeClosingReadCloser) Close() error {
 	}
 	if p.pipeclose != nil {
 		if err := p.pipeclose(); err != nil {
-			return errors.New(lvmErrToString(err))
+			return lvmErr(err)
 		}
 	}
 	return nil
 }
 
-// lvmErrToString converts an error to a string, if the error is an exec.ExitError, it will return the stderr output.
+// lvmErr converts an error, if the error is an exec.ExitError, it will return the stderr output.
 // this is because the actual error will then not contain any data.
-func lvmErrToString(err error) string {
+func lvmErr(err error) error {
 	var errType *exec.ExitError
 	// nolint:SA4006 this is a false positive of never used, some LVM commands run exit code 5.
 	// in these cases we can return the stderr output of lvm as it will be filled with the exit message.
@@ -112,7 +116,7 @@ func lvmErrToString(err error) string {
 		if errType.Stderr != nil {
 			out += fmt.Sprintf(": %s", errType.Stderr)
 		}
-		return out
+		return errors.New(out)
 	}
-	return err.Error()
+	return err
 }
