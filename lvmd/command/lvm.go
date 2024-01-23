@@ -12,13 +12,8 @@ const (
 	lvm     = "/sbin/lvm"
 )
 
-var Containerized = false
-
 // ErrNotFound is returned when a VG or LV is not found.
 var ErrNotFound = errors.New("not found")
-
-// LVInfo is a map of lv attributes to values.
-type LVInfo map[string]string
 
 // VolumeGroup represents a volume group of linux lvm.
 // The state should be considered immutable and will not automatically update.
@@ -44,47 +39,14 @@ func getLVs(ctx context.Context, vg *VolumeGroup, lvname string) (map[string]lv,
 		return vg.reportLvs, nil
 	}
 
-	var res = new(LvReport)
-
+	// by default, fetch all lvs for the vg
 	name := vg.state.name
+	// if lvname is set, only fetch that lv in the vg
 	if lvname != "" {
 		name += "/" + lvname
 	}
 
-	args := []string{
-		"lvs",
-		name,
-		"-o",
-		"lv_uuid,lv_name,lv_full_name,lv_path,lv_size," +
-			"lv_kernel_major,lv_kernel_minor,origin,origin_size,pool_lv,lv_tags," +
-			"lv_attr,vg_name,data_percent,metadata_percent,pool_lv",
-		"--units",
-		"b",
-		"--nosuffix",
-		"--reportformat",
-		"json",
-	}
-	err := callLVMInto(ctx, res, args...)
-
-	if len(res.Report) == 0 {
-		return nil, ErrNotFound
-	}
-	if err != nil {
-		return nil, err
-	}
-
-	lvs := res.Report[0].LV
-
-	if len(lvs) == 0 {
-		return nil, ErrNotFound
-	}
-
-	lvmap := make(map[string]lv, len(lvs))
-	for _, lv := range lvs {
-		lvmap[lv.name] = lv
-	}
-
-	return lvmap, nil
+	return getLVReport(ctx, name)
 }
 
 func (vg *VolumeGroup) Update(ctx context.Context) error {
@@ -115,31 +77,11 @@ func (vg *VolumeGroup) Free() (uint64, error) {
 // FindVolumeGroup finds a named volume group.
 // name is volume group name to look up.
 func FindVolumeGroup(ctx context.Context, name string) (*VolumeGroup, error) {
-	res := new(VgReport)
-	args := []string{
-		"vgs", name, "-o", "vg_uuid,vg_name,vg_size,vg_free", "--units", "b", "--nosuffix", "--reportformat", "json",
-	}
-	err := callLVMInto(ctx, res, args...)
-
-	vgFound := false
-	volumeGroup := VolumeGroup{}
-	for _, report := range res.Report {
-		for _, vg := range report.VG {
-			if vg.name == name {
-				volumeGroup.state = vg
-				vgFound = true
-				break
-			}
-		}
-	}
-
+	vg, err := getVGReport(ctx, name)
 	if err != nil {
-		return &VolumeGroup{}, err
+		return nil, err
 	}
-	if !vgFound {
-		return nil, ErrNotFound
-	}
-	return &volumeGroup, nil
+	return &VolumeGroup{state: vg}, nil
 }
 
 func SearchVolumeGroupList(vgs []*VolumeGroup, name string) (*VolumeGroup, error) {
