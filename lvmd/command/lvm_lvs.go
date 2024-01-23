@@ -124,6 +124,12 @@ func getLVReport(ctx context.Context, name string) (map[string]lv, error) {
 	}
 	err := callLVMInto(ctx, res, args...)
 
+	if lvmErr, ok := AsLVMError(err); ok && lvmErr.ExitCode() == 5 {
+		// lvs returns 5 if the volume does not exist, so we can convert this to ErrNotFound
+		// join it to the original error so that the caller can still see the stderr output.
+		return nil, ErrNotFound
+	}
+
 	if len(res.Report) == 0 {
 		return nil, ErrNotFound
 	}

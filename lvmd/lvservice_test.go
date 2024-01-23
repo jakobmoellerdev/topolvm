@@ -2,6 +2,7 @@ package lvmd
 
 import (
 	"context"
+	"errors"
 	"os"
 	"os/exec"
 	"testing"
@@ -184,7 +185,7 @@ func TestLVService(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, err = vg.FindVolume(ctx, "test1")
-	if err != command.ErrNotFound {
+	if !errors.Is(err, command.ErrNotFound) {
 		t.Error("unexpected error: ", err)
 	}
 
@@ -284,7 +285,7 @@ func TestLVService(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, err = pool.FindVolume(ctx, "test1")
-	if err != command.ErrNotFound {
+	if !errors.Is(err, command.ErrNotFound) {
 		t.Error("unexpected error: ", err)
 	}
 
