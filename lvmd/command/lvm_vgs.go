@@ -6,12 +6,6 @@ import (
 	"strconv"
 )
 
-type vgReport struct {
-	Report []struct {
-		VG []vg `json:"vg"`
-	} `json:"report"`
-}
-
 type vg struct {
 	name string
 	uuid string
@@ -49,6 +43,11 @@ func (u *vg) UnmarshalJSON(data []byte) error {
 }
 
 func getVGReport(ctx context.Context, name string) (vg, error) {
+	type vgReport struct {
+		Report []struct {
+			VG []vg `json:"vg"`
+		} `json:"report"`
+	}
 	res := new(vgReport)
 	args := []string{
 		"vgs", name, "-o", "vg_uuid,vg_name,vg_size,vg_free", "--units", "b", "--nosuffix", "--reportformat", "json",

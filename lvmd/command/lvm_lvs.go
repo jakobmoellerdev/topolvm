@@ -7,12 +7,6 @@ import (
 	"strings"
 )
 
-type lvReport struct {
-	Report []struct {
-		LV []lv `json:"lv"`
-	} `json:"report"`
-}
-
 type lv struct {
 	name            string
 	fullName        string
@@ -107,6 +101,12 @@ func (u *lv) UnmarshalJSON(data []byte) error {
 }
 
 func getLVReport(ctx context.Context, name string) (map[string]lv, error) {
+	type lvReport struct {
+		Report []struct {
+			LV []lv `json:"lv"`
+		} `json:"report"`
+	}
+
 	var res = new(lvReport)
 
 	args := []string{

@@ -27,11 +27,12 @@ func callLVMInto(ctx context.Context, into any, args ...string) error {
 	output, err := callLVMMStreamed(ctx, args...)
 	defer func() {
 		// this will wait for the process to be released.
-		// If the process gets interrupted, or has a bad exit status we will log this here.
+		// If the process gets interrupted or has a bad exit status, it will log this here.
 		// the decode process can still finish normally.
 		// This is safe because assuming that the process errors with exit != 0,
-		// the decode process will always fail as well.
+		// the decode process will always fail as well. (e.g. with EOF or bad decode)
 		// The logs will then first show the decode error and then the exit error.
+		// Calling code will only need to worry about the decode error.
 		if err := output.Close(); err != nil {
 			log.FromContext(ctx).Error(err, "failed to run command")
 		}
@@ -73,6 +74,9 @@ func wrapExecCommand(cmd string, args ...string) *exec.Cmd {
 	return c
 }
 
+// runCommand runs the command and returns the stdout as a ReadCloser that also Waits for the command to finish.
+// After the Close command is called the cmd is closed and the resources are released.
+// Not calling close on this method will result in a resource leak.
 func runCommand(ctx context.Context, cmd *exec.Cmd) (io.ReadCloser, error) {
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
