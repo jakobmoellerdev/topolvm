@@ -156,24 +156,22 @@ func (s *lvService) RemoveLV(ctx context.Context, req *proto.RemoveLVRequest) (*
 	if err != nil {
 		return nil, status.Errorf(codes.NotFound, "%s: %s", err.Error(), req.DeviceClass)
 	}
+
 	vg, err := command.FindVolumeGroup(ctx, dc.VolumeGroup)
-	if err != nil {
-		return nil, err
-	}
-	// ListVolumes on VolumeGroup or ThinPool returns ThinLogicalVolumes as well
-	// and no special handling for removal of LogicalVolume is needed
-	lv, err := vg.FindVolume(ctx, req.GetName())
 	if errors.Is(err, ErrNotFound) {
-		return &proto.Empty{}, nil
+		return nil, status.Errorf(codes.NotFound, "%s: %s", err.Error(), req.DeviceClass)
 	} else if err != nil {
-		logger.Error(err, "failed to get volume", "name", req.GetName())
+		logger.Error(err, "failed to get volume group", "name", dc.VolumeGroup)
 		return nil, err
 	}
 
-	if err := lv.Remove(ctx); err != nil {
-		logger.Error(err, "failed to remove volume", "name", lv.Name())
-		return nil, status.Error(codes.Internal, err.Error())
+	if err := vg.RemoveVolume(ctx, req.GetName()); errors.Is(err, ErrNotFound) {
+		return nil, status.Errorf(codes.NotFound, "%s: %s", err.Error(), req.DeviceClass)
+	} else if err != nil {
+		logger.Error(err, "failed to remove volume", "name", req.GetName())
+		return nil, err
 	}
+
 	s.notify()
 
 	logger.Info("removed a LV", "name", req.GetName())
@@ -272,8 +270,8 @@ func (s *lvService) CreateLVSnapshot(ctx context.Context, req *proto.CreateLVSna
 	// If source volume is thin, activate the thin snapshot lv with accessmode.
 	if err := snapLV.Activate(ctx, req.AccessType); err != nil {
 		logger.Error(err, "failed to activate snapshot volume")
-		if err := snapLV.Remove(ctx); err != nil {
-			logger.Error(err, "failed to delete snapshot")
+		if err := vg.RemoveVolume(ctx, req.GetName()); err != nil {
+			logger.Error(err, "failed to delete snapshot after activation failed")
 		} else {
 			logger.Info("deleted a snapshot")
 		}

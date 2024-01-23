@@ -552,9 +552,17 @@ func (l *LogicalVolume) Resize(ctx context.Context, newSize uint64) error {
 	return nil
 }
 
-// Remove this volume.
-func (l *LogicalVolume) Remove(ctx context.Context) error {
-	return callLVM(ctx, "lvremove", "-f", l.path)
+// RemoveVolume removes the given volume from the volume group.
+func (vg *VolumeGroup) RemoveVolume(ctx context.Context, name string) error {
+	err := callLVM(ctx, "lvremove", "-f", fullName(name, vg))
+
+	if lvmErr, ok := AsLVMError(err); ok && lvmErr.ExitCode() == 5 {
+		// lvremove returns 5 if the volume does not exist, so we can convert this to ErrNotFound
+		// join it to the original error so that the caller can still see the stderr output.
+		return errors.Join(ErrNotFound, err)
+	}
+
+	return err
 }
 
 // Rename this volume.

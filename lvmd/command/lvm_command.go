@@ -2,6 +2,7 @@ package command
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -25,18 +26,6 @@ func callLVM(ctx context.Context, args ...string) error {
 // if the struct pointer is nil, the output will be printed to the log instead.
 func callLVMInto(ctx context.Context, into any, args ...string) error {
 	output, err := callLVMMStreamed(ctx, args...)
-	defer func() {
-		// this will wait for the process to be released.
-		// If the process gets interrupted or has a bad exit status, it will log this here.
-		// the decode process can still finish normally.
-		// This is safe because assuming that the process errors with exit != 0,
-		// the decode process will always fail as well. (e.g. with EOF or bad decode)
-		// The logs will then first show the decode error and then the exit error.
-		// Calling code will only need to worry about the decode error.
-		if err := output.Close(); err != nil {
-			log.FromContext(ctx).Error(err, "failed to run command")
-		}
-	}()
 	if err != nil {
 		return fmt.Errorf("failed to execute command: %v", err)
 	}
@@ -47,10 +36,33 @@ func callLVMInto(ctx context.Context, into any, args ...string) error {
 		for scanner.Scan() {
 			log.FromContext(ctx).Info(strings.TrimSpace(scanner.Text()))
 		}
-		return scanner.Err()
+
+		scanErr := scanner.Err()
+		closeErr := output.Close()
+
+		if closeErr != nil && scanErr != nil {
+			return errors.Join(closeErr, scanErr)
+		} else if closeErr != nil {
+			return closeErr
+		} else if scanErr != nil {
+			return scanErr
+		}
+
+		return nil
 	}
 
-	return json.NewDecoder(output).Decode(&into)
+	decodeErr := json.NewDecoder(output).Decode(&into)
+	closeErr := output.Close()
+
+	if closeErr != nil && decodeErr != nil {
+		return errors.Join(closeErr, decodeErr)
+	} else if closeErr != nil {
+		return closeErr
+	} else if decodeErr != nil {
+		return decodeErr
+	}
+
+	return nil
 }
 
 // callLVMMStreamed calls lvm sub-commands and returns the output as a ReadCloser.
@@ -82,12 +94,17 @@ func runCommand(ctx context.Context, cmd *exec.Cmd) (io.ReadCloser, error) {
 	if err != nil {
 		return nil, err
 	}
+	stderr, err := cmd.StderrPipe()
+	if err != nil {
+		return nil, err
+	}
+
 	log.FromContext(ctx).Info("invoking command", "args", cmd.Args)
 	if err := cmd.Start(); err != nil {
 		return nil, err
 	}
 	// Return a read closer that will wait for the command to finish when closed to release all resources.
-	return commandReadCloser{cmd: cmd, ReadCloser: stdout}, nil
+	return commandReadCloser{cmd: cmd, ReadCloser: stdout, stderr: stderr}, nil
 }
 
 // commandReadCloser is a ReadCloser that calls the Wait function of the command when Close is called.
@@ -95,32 +112,70 @@ func runCommand(ctx context.Context, cmd *exec.Cmd) (io.ReadCloser, error) {
 type commandReadCloser struct {
 	cmd *exec.Cmd
 	io.ReadCloser
+	stderr io.ReadCloser
 }
 
 func (p commandReadCloser) Close() error {
 	if err := p.ReadCloser.Close(); err != nil {
 		return err
 	}
+
+	// Read the stderr output after the read has finished since we are sure by then the command must have run.
+	stderr, err := io.ReadAll(p.stderr)
+	if err != nil {
+		return err
+	}
+
 	if err := p.cmd.Wait(); err != nil {
 		// wait can result in an exit code error
-		return lvmErr(err)
+		return &lvmErr{
+			err:    err,
+			stderr: stderr,
+		}
 	}
 	return nil
 }
 
-// lvmErr converts an error if the error is an exec.ExitError.
-// it will then return the stderr output together with the exit code.
-// this is because the actual error will then not contain any data.
-func lvmErr(err error) error {
-	var errType *exec.ExitError
-	// nolint:SA4006 this is a false positive of never used, some LVM commands run exit code 5.
-	// in these cases we can return the stderr output of lvm as it will be filled with the exit message.
-	if errors.As(err, &errType) {
-		out := errType.String()
-		if errType.Stderr != nil {
-			out += fmt.Sprintf(": %s", errType.Stderr)
-		}
-		return errors.New(out)
+// AsLVMError returns the LVMError from the error if it exists and a bool indicating if is an LVMError or not.
+func AsLVMError(err error) (LVMError, bool) {
+	var lvmErr LVMError
+	ok := errors.As(err, &lvmErr)
+	return lvmErr, ok
+}
+
+// LVMError is an error that wraps the original error and the stderr output of the lvm command if found.
+// It also provides an exit code if present that can be used to determine the type of error from LVM.
+// Regular inaccessible errors will have an exit code of 5.
+type LVMError interface {
+	error
+	ExitCode() int
+	Unwrap() error
+}
+
+type lvmErr struct {
+	err    error
+	stderr []byte
+}
+
+func (e *lvmErr) Error() string {
+	if e.stderr != nil {
+		return fmt.Sprintf("%v: %v", e.err, string(bytes.TrimSpace(e.stderr)))
 	}
-	return err
+	return e.err.Error()
+}
+
+func (e *lvmErr) Unwrap() error {
+	return e.err
+}
+
+func (e *lvmErr) ExitCode() int {
+	type exitError interface {
+		ExitCode() int
+		error
+	}
+	var err exitError
+	if errors.As(e.err, &err) {
+		return err.ExitCode()
+	}
+	return -1
 }

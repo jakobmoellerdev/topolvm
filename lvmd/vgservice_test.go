@@ -374,11 +374,11 @@ func testVGService(t *testing.T, vg *command.VolumeGroup) {
 	}
 
 	// Remove volumes to make room for a raid volume
-	test3Vol.Remove(ctx)
-	test4Vol.Remove(ctx)
+	_ = vg.RemoveVolume(ctx, test3Vol.Name())
+	_ = vg.RemoveVolume(ctx, test4Vol.Name())
 
 	// Remove one of the thin lvs
-	testp2.Remove(ctx)
+	_ = vg.RemoveVolume(ctx, testp2.Name())
 
 	t.Run("thinpool-stripe-raid", func(t *testing.T) {
 		t.Skip("investigate support of striped and raid for thinlvs")
@@ -413,8 +413,8 @@ func testVGService(t *testing.T, vg *command.VolumeGroup) {
 		}
 
 		// Remove thin volumes
-		testp3Vol.Remove(ctx)
-		testp4Vol.Remove(ctx)
+		_ = vg.RemoveVolume(ctx, testp3Vol.Name())
+		_ = vg.RemoveVolume(ctx, testp4Vol.Name())
 
 	})
 }
