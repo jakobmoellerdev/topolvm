@@ -130,11 +130,12 @@ func getLVReport(ctx context.Context, name string) (map[string]lv, error) {
 		return nil, ErrNotFound
 	}
 
-	if len(res.Report) == 0 {
-		return nil, ErrNotFound
-	}
 	if err != nil {
 		return nil, err
+	}
+
+	if len(res.Report) == 0 {
+		return nil, ErrNotFound
 	}
 
 	lvs := res.Report[0].LV
