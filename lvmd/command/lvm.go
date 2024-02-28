@@ -10,10 +10,20 @@ import (
 const (
 	nsenter = "/usr/bin/nsenter"
 	lvm     = "/sbin/lvm"
+
+	// MinimumSectorSize is the default minimum sector size for lvm.
+	// It is used to align sizes to the nearest sector.
+	// While Sector Sizes of 512 are common, using 4096 is safe
+	// As it also aligns with 512 and 1024 byte sectors, and is the default for most modern disks.
+	MinimumSectorSize = 4096 // 4KB Sector Size - effectively the minimum size for a logical volume.
 )
 
 // ErrNotFound is returned when a VG or LV is not found.
 var ErrNotFound = errors.New("not found")
+
+// ErrSmallerThanMinimumSectorSize is returned when a volume is requested that is smaller than the minimum sector size.
+var ErrSmallerThanMinimumSectorSize = fmt.Errorf("cannot create volume as given size is smaller "+
+	"than minimum predicted sector size: %d", MinimumSectorSize)
 
 // VolumeGroup represents a volume group of linux lvm.
 // The state should be considered immutable and will not automatically update.
@@ -200,6 +210,11 @@ func (vg *VolumeGroup) convertLV(lv lv) *LogicalVolume {
 // lvcreateOptions are additional arguments to pass to lvcreate.
 func (vg *VolumeGroup) CreateVolume(ctx context.Context, name string, size uint64, tags []string, stripe uint, stripeSize string,
 	lvcreateOptions []string) error {
+
+	if size = roundToNearestLowerBoundSectorSize(size); size == 0 {
+		return ErrSmallerThanMinimumSectorSize
+	}
+
 	lvcreateArgs := []string{"lvcreate", "-n", name, "-L", fmt.Sprintf("%vb", size), "-W", "y", "-y"}
 	for _, tag := range tags {
 		lvcreateArgs = append(lvcreateArgs, "--addtag")
@@ -315,6 +330,11 @@ func (t *ThinPool) Resize(ctx context.Context, newSize uint64) error {
 	if t.state.size == newSize {
 		return nil
 	}
+
+	if newSize = roundToNearestLowerBoundSectorSize(newSize); newSize == 0 {
+		return ErrSmallerThanMinimumSectorSize
+	}
+
 	if err := callLVM(ctx, "lvresize", "-f", "-L", fmt.Sprintf("%vb", newSize), t.state.fullName); err != nil {
 		return err
 	}
@@ -581,4 +601,11 @@ func (l *LogicalVolume) Rename(ctx context.Context, name string) error {
 	l.name = name
 	l.path = path.Join(path.Dir(l.path), l.name)
 	return nil
+}
+
+// roundToNearestLowerBoundSectorSize aligns the given size to the nearest lower rounded sector size.
+// This is useful for ensuring that sizes are aligned to sector size.
+// If this would not be done we could otherwise run into sector issues.
+func roundToNearestLowerBoundSectorSize(size uint64) uint64 {
+	return size - (size % MinimumSectorSize)
 }
