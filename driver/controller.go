@@ -440,7 +440,26 @@ func convertRequestCapacityBytes(requestBytes, limitBytes int64) (int64, error) 
 		}
 		return topolvm.DefaultSize, nil
 	}
+
+	if requestBytes%topolvm.MinimumSectorSize != 0 {
+
+		requestBytes = roundUp(requestBytes, topolvm.MinimumSectorSize)
+
+		if limitBytes > 0 && requestBytes > limitBytes {
+			return 0, fmt.Errorf(
+				"requested capacity rounded to nearest sector size (%d) exceeds limit capacity, "+
+					"either specify a lower request or a higher limit: request=%d limit=%d",
+				topolvm.MinimumSectorSize, requestBytes, limitBytes,
+			)
+		}
+	}
+
 	return requestBytes, nil
+}
+
+// roundUp rounds up the size to the nearest given multiple.
+func roundUp(size int64, multiple int64) int64 {
+	return (multiple - size%multiple) + size
 }
 
 func (s controllerServerNoLocked) DeleteVolume(ctx context.Context, req *csi.DeleteVolumeRequest) (*csi.DeleteVolumeResponse, error) {

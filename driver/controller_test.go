@@ -2,6 +2,8 @@ package driver
 
 import (
 	"testing"
+
+	"github.com/topolvm/topolvm"
 )
 
 func Test_convertRequestCapacityBytes(t *testing.T) {
@@ -48,7 +50,7 @@ func Test_convertRequestCapacityBytes(t *testing.T) {
 	if err != nil {
 		t.Error("should not be error")
 	}
-	if v != 1 {
+	if v != topolvm.MinimumSectorSize {
 		t.Errorf("should be resolve capacities < 1Gi without error if there is no limit: %d", v)
 	}
 
@@ -60,12 +62,12 @@ func Test_convertRequestCapacityBytes(t *testing.T) {
 		t.Errorf("should be 1073741824 in byte precision: %d", v)
 	}
 
-	v, err = convertRequestCapacityBytes(1<<30+1, 1<<30+1)
-	if err != nil {
-		t.Error("should not be error")
+	_, err = convertRequestCapacityBytes(1<<30+1, 1<<30+1)
+	if err == nil {
+		t.Error("should be error")
 	}
-	if v != (1<<30)+1 {
-		t.Errorf("should be 1073741825 in byte precision: %d", v)
+	if err.Error() != "requested capacity rounded to nearest sector size (4096) exceeds limit capacity, either specify a lower request or a higher limit: request=1073745920 limit=1073741825" {
+		t.Error("should report capacity limit exceeded after rounding")
 	}
 
 	v, err = convertRequestCapacityBytes(0, 0)
