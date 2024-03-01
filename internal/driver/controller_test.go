@@ -1,6 +1,7 @@
 package driver
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/topolvm/topolvm"
@@ -31,13 +32,22 @@ func Test_convertRequestCapacityBytes(t *testing.T) {
 		t.Error("should report capacity limit exceeded")
 	}
 
-	v, err := convertRequestCapacityBytes(0, 10)
+	v, err := convertRequestCapacityBytes(0, topolvm.MinimumSectorSize-1)
 	if err != nil {
 		t.Error("should not be error")
 	}
-	if v != 10 {
-		t.Errorf("should be the limit capacity by default if 0 is supplied and limit is smaller than 1Gi: %d", v)
+	if v != topolvm.MinimumSectorSize {
+		t.Errorf("should be the minimum sector size if 0 is supplied and limit is smaller than minimum sector size: %d", v)
 	}
+
+	v, err = convertRequestCapacityBytes(0, topolvm.MinimumSectorSize+1)
+	if err != nil {
+		t.Error("should not be error")
+	}
+	if v != topolvm.MinimumSectorSize*2 {
+		t.Errorf("should be nearest rounded up multiple of sector size if 0 is supplied and limit is larger than sector-size: %d", v)
+	}
+
 	v, err = convertRequestCapacityBytes(0, 2<<30)
 	if err != nil {
 		t.Error("should not be error")
@@ -76,5 +86,37 @@ func Test_convertRequestCapacityBytes(t *testing.T) {
 	}
 	if v != 1<<30 {
 		t.Errorf("should be 1073741825 in byte precision: %d", v)
+	}
+
+	v, err = convertRequestCapacityBytes(1, topolvm.MinimumSectorSize*2)
+	if err != nil {
+		t.Error("should not be error")
+	}
+	if v != topolvm.MinimumSectorSize {
+		t.Errorf("should be %d in byte precision: %d", topolvm.MinimumSectorSize, v)
+	}
+
+}
+
+func Test_roundUp(t *testing.T) {
+	testCases := []struct {
+		size     int64
+		multiple int64
+		expected int64
+	}{
+		{12, 4, 12},
+		{11, 4, 12},
+		{13, 4, 16},
+		{0, 4, 0},
+	}
+
+	for _, tc := range testCases {
+		name := fmt.Sprintf("nearest rounded up multiple of %d from %d should be %d", tc.multiple, tc.size, tc.expected)
+		t.Run(name, func(t *testing.T) {
+			rounded := roundUp(tc.size, tc.multiple)
+			if rounded != tc.expected {
+				t.Errorf("%s, but was %d", name, rounded)
+			}
+		})
 	}
 }

@@ -430,21 +430,23 @@ func convertRequestCapacityBytes(requestBytes, limitBytes int64) (int64, error) 
 		)
 	}
 
-	// if requestBytes is 0, default to max(1Gi, limitBytes>0)
-	// 1. if limitBytes is 0, default to 1Gi
-	// 2. if limitBytes is greater than 1Gi, default to 1Gi
-	// 3. if limitBytes is less than 1Gi, default to limitBytes
+	// if requestBytes is 0 and
+	// 1. if limitBytes == 0, default to 1Gi
+	// 2. if limitBytes >= 1Gi, default to 1Gi
+	// 3. if limitBytes < 1Gi, default to rounded-up 4096 multiple of limitBytes
 	if requestBytes == 0 {
-		if limitBytes > 0 && topolvm.DefaultSize > limitBytes {
-			return limitBytes, nil
+		// if there is no limit or the limit is bigger or equal to the default, use the default
+		if limitBytes == 0 || limitBytes >= topolvm.DefaultSize {
+			return topolvm.DefaultSize, nil
 		}
-		return topolvm.DefaultSize, nil
+
+		return roundUp(limitBytes, topolvm.MinimumSectorSize), nil
 	}
 
 	if requestBytes%topolvm.MinimumSectorSize != 0 {
-
+		// round up to the nearest multiple of the sector size
 		requestBytes = roundUp(requestBytes, topolvm.MinimumSectorSize)
-
+		// after rounding up, we might overshoot the limit
 		if limitBytes > 0 && requestBytes > limitBytes {
 			return 0, fmt.Errorf(
 				"requested capacity rounded to nearest sector size (%d) exceeds limit capacity, "+
@@ -459,7 +461,7 @@ func convertRequestCapacityBytes(requestBytes, limitBytes int64) (int64, error) 
 
 // roundUp rounds up the size to the nearest given multiple.
 func roundUp(size int64, multiple int64) int64 {
-	return (multiple - size%multiple) + size
+	return (size + multiple - 1) / multiple * multiple
 }
 
 func (s controllerServerNoLocked) DeleteVolume(ctx context.Context, req *csi.DeleteVolumeRequest) (*csi.DeleteVolumeResponse, error) {
