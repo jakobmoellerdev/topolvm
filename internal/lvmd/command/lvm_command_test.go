@@ -12,7 +12,7 @@ import (
 	"github.com/go-logr/logr/funcr"
 	"github.com/go-logr/logr/testr"
 	"github.com/topolvm/topolvm"
-	"github.com/topolvm/topolvm/lvmd/testutils"
+	"github.com/topolvm/topolvm/internal/lvmd/testutils"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
