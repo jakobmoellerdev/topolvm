@@ -433,35 +433,37 @@ func convertRequestCapacityBytes(requestBytes, limitBytes int64) (int64, error) 
 	// if requestBytes is 0 and
 	// 1. if limitBytes == 0, default to 1Gi
 	// 2. if limitBytes >= 1Gi, default to 1Gi
-	// 3. if limitBytes < 1Gi, default to rounded-up 4096 multiple of limitBytes
+	// 3. if limitBytes < 1Gi, default to rounded-down 4096 multiple of limitBytes
 	if requestBytes == 0 {
 		// if there is no limit or the limit is bigger or equal to the default, use the default
 		if limitBytes == 0 || limitBytes >= topolvm.DefaultSize {
 			return topolvm.DefaultSize, nil
 		}
 
-		return roundUp(limitBytes, topolvm.MinimumSectorSize), nil
+		requestBytes = roundDown(limitBytes, topolvm.MinimumSectorSize)
+	} else if requestBytes%topolvm.MinimumSectorSize != 0 {
+		requestBytes = roundDown(requestBytes, topolvm.MinimumSectorSize)
 	}
 
-	if requestBytes%topolvm.MinimumSectorSize != 0 {
-		// round up to the nearest multiple of the sector size
-		requestBytes = roundUp(requestBytes, topolvm.MinimumSectorSize)
-		// after rounding up, we might overshoot the limit
-		if limitBytes > 0 && requestBytes > limitBytes {
-			return 0, fmt.Errorf(
-				"requested capacity rounded to nearest sector size (%d) exceeds limit capacity, "+
-					"either specify a lower request or a higher limit: request=%d limit=%d",
-				topolvm.MinimumSectorSize, requestBytes, limitBytes,
-			)
-		}
+	// after rounding down, we might have rounded to 0
+	if requestBytes == 0 {
+		return 0, RoundingTo0Error(requestBytes, limitBytes)
 	}
 
 	return requestBytes, nil
 }
 
-// roundUp rounds up the size to the nearest given multiple.
-func roundUp(size int64, multiple int64) int64 {
-	return (size + multiple - 1) / multiple * multiple
+func RoundingTo0Error(request, limit int64) error {
+	return fmt.Errorf(
+		"requested capacity rounded down to nearest minimal allowed size (%d) is 0, "+
+			"specify a higher request and/or limit that is also a multiple of %d: request=%d limit=%d",
+		topolvm.MinimumSectorSize, topolvm.MinimumSectorSize, request, limit,
+	)
+}
+
+// roundDown rounds down the size to the nearest given multiple.
+func roundDown(size int64, multiple int64) int64 {
+	return size - (size % multiple)
 }
 
 func (s controllerServerNoLocked) DeleteVolume(ctx context.Context, req *csi.DeleteVolumeRequest) (*csi.DeleteVolumeResponse, error) {

@@ -33,18 +33,18 @@ func Test_convertRequestCapacityBytes(t *testing.T) {
 	}
 
 	v, err := convertRequestCapacityBytes(0, topolvm.MinimumSectorSize-1)
-	if err != nil {
-		t.Error("should not be error")
+	if err == nil {
+		t.Errorf("should be error")
 	}
-	if v != topolvm.MinimumSectorSize {
-		t.Errorf("should be the minimum sector size if 0 is supplied and limit is smaller than minimum sector size: %d", v)
+	if err.Error() != RoundingTo0Error(0, topolvm.MinimumSectorSize-1).Error() {
+		t.Errorf("should report rounding error: %v", err)
 	}
 
 	v, err = convertRequestCapacityBytes(0, topolvm.MinimumSectorSize+1)
 	if err != nil {
 		t.Error("should not be error")
 	}
-	if v != topolvm.MinimumSectorSize*2 {
+	if v != topolvm.MinimumSectorSize {
 		t.Errorf("should be nearest rounded up multiple of sector size if 0 is supplied and limit is larger than sector-size: %d", v)
 	}
 
@@ -57,11 +57,11 @@ func Test_convertRequestCapacityBytes(t *testing.T) {
 	}
 
 	v, err = convertRequestCapacityBytes(1, 0)
-	if err != nil {
-		t.Error("should not be error")
+	if err == nil {
+		t.Errorf("should be error")
 	}
-	if v != topolvm.MinimumSectorSize {
-		t.Errorf("should be resolve capacities < 1Gi without error if there is no limit: %d", v)
+	if err.Error() != RoundingTo0Error(0, 0).Error() {
+		t.Errorf("should report rounding error: %v", err)
 	}
 
 	v, err = convertRequestCapacityBytes(1<<30, 1<<30)
@@ -73,11 +73,11 @@ func Test_convertRequestCapacityBytes(t *testing.T) {
 	}
 
 	_, err = convertRequestCapacityBytes(1<<30+1, 1<<30+1)
-	if err == nil {
+	if err != nil {
 		t.Error("should be error")
 	}
-	if err.Error() != "requested capacity rounded to nearest sector size (4096) exceeds limit capacity, either specify a lower request or a higher limit: request=1073745920 limit=1073741825" {
-		t.Error("should report capacity limit exceeded after rounding")
+	if v != 1<<30 {
+		t.Errorf("should be 1073741824 in byte precision: %d", v)
 	}
 
 	v, err = convertRequestCapacityBytes(0, 0)
@@ -89,11 +89,11 @@ func Test_convertRequestCapacityBytes(t *testing.T) {
 	}
 
 	v, err = convertRequestCapacityBytes(1, topolvm.MinimumSectorSize*2)
-	if err != nil {
-		t.Error("should not be error")
+	if err == nil {
+		t.Errorf("should be error")
 	}
-	if v != topolvm.MinimumSectorSize {
-		t.Errorf("should be %d in byte precision: %d", topolvm.MinimumSectorSize, v)
+	if err.Error() != RoundingTo0Error(0, topolvm.MinimumSectorSize*2).Error() {
+		t.Errorf("should report rounding error: %v", err)
 	}
 
 }
@@ -113,7 +113,7 @@ func Test_roundUp(t *testing.T) {
 	for _, tc := range testCases {
 		name := fmt.Sprintf("nearest rounded up multiple of %d from %d should be %d", tc.multiple, tc.size, tc.expected)
 		t.Run(name, func(t *testing.T) {
-			rounded := roundUp(tc.size, tc.multiple)
+			rounded := roundDown(tc.size, tc.multiple)
 			if rounded != tc.expected {
 				t.Errorf("%s, but was %d", name, rounded)
 			}
