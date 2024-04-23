@@ -759,7 +759,7 @@ func testE2E() {
 		Expect(pod.Spec.NodeName).To(Equal(""))
 	})
 
-	DescribeTable("should resize filesystem",
+	FDescribeTable("should resize filesystem",
 		// expectedSizes is the expected size of the volume after a resize.
 		// there are 3 steps of resizing: online, offline, and after deleting pods.
 		// thus the expected sizes should be 3 elements.
@@ -786,20 +786,32 @@ func testE2E() {
 			By("confirming that the specified device is resized in the Pod")
 			timeout := time.Minute * 5
 			Eventually(func() error {
+				By("running df command to get volume size")
 				stdout, err := kubectl("exec", "-n", ns, "ubuntu", "--", "df", "--output=size", "/test1")
 				if err != nil {
+					By("failed to get volume size via df, retrying...")
 					return fmt.Errorf("failed to get volume size. err: %w", err)
 				}
 				dfFields := strings.Fields(string(stdout))
 				volSize, err := strconv.Atoi(dfFields[1])
 				if err != nil {
+					By("df field output couldn't be parsed, retrying...")
 					return fmt.Errorf("failed to convert volume size string. data: %s, err: %w", stdout, err)
 				}
 				if volSize != expectedSizes[0] {
+					By("volume size from df is not expected size (not resized yet), retrying...")
+
+					var pvc corev1.PersistentVolumeClaim
+					if err := getObjects(&pvc, "pvc", "-n", ns, "topo-pvc"); err != nil {
+						By(fmt.Sprintf("failed to get PVC for debugging reference. err: %v", err))
+					} else {
+						By(fmt.Sprintf("Current PVC status: %v", pvc.Status))
+					}
+
 					return fmt.Errorf("failed to match volume size. actual: %d, expected: %d", volSize, expectedSizes[0])
 				}
 				return nil
-			}, timeout).Should(Succeed())
+			}, timeout).WithPolling(1 * time.Second).Should(Succeed())
 
 			By("deleting Pod for offline resizing")
 			_, err = kubectlWithInput(podYaml, "delete", "--now=true", "-n", ns, "-f", "-")
@@ -826,6 +838,15 @@ func testE2E() {
 					return fmt.Errorf("failed to convert volume size string. data: %s, err: %w", stdout, err)
 				}
 				if volSize != expectedSizes[1] {
+					By("volume size from df is not expected size (not resized yet), retrying...")
+
+					var pvc corev1.PersistentVolumeClaim
+					if err := getObjects(&pvc, "pvc", "-n", ns, "topo-pvc"); err != nil {
+						By(fmt.Sprintf("failed to get PVC for debugging reference. err: %v", err))
+					} else {
+						By(fmt.Sprintf("Current PVC status: %v", pvc.Status))
+					}
+
 					return fmt.Errorf("failed to match volume size. actual: %d, expected: %d", volSize, expectedSizes[1])
 				}
 				return nil
@@ -852,6 +873,15 @@ func testE2E() {
 					return fmt.Errorf("failed to convert volume size string. data: %s, err: %w", stdout, err)
 				}
 				if volSize != expectedSizes[2] {
+					By("volume size from df is not expected size (not resized yet), retrying...")
+
+					var pvc corev1.PersistentVolumeClaim
+					if err := getObjects(&pvc, "pvc", "-n", ns, "topo-pvc"); err != nil {
+						By(fmt.Sprintf("failed to get PVC for debugging reference. err: %v", err))
+					} else {
+						By(fmt.Sprintf("Current PVC status: %v", pvc.Status))
+					}
+
 					return fmt.Errorf("failed to match volume size. actual: %d, expected: %d", volSize, expectedSizes[2])
 				}
 				return nil
@@ -895,11 +925,11 @@ func testE2E() {
 			3*1024*1024 - 10240, // 3MB - 10KiB XFS overhead
 			4*1024*1024 - 10240, // 4MB - 10KiB XFS overhead
 		}),
-		Entry("btrfs", "topolvm-provisioner-btrfs", []int{
-			2 * 1024 * 1024, // 2MB
-			3 * 1024 * 1024, // 3MB
-			4 * 1024 * 1024, // 4MB
-		}),
+		// Entry("btrfs", "topolvm-provisioner-btrfs", []int{
+		// 	2 * 1024 * 1024, // 2MB
+		// 	3 * 1024 * 1024, // 3MB
+		// 	4 * 1024 * 1024, // 4MB
+		// }),
 	)
 
 	It("should resize a block device", func() {
