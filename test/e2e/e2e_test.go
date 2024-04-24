@@ -123,7 +123,7 @@ func testE2E() {
 		}).Should(Succeed())
 
 		By("deleting the Pod and PVC")
-		_, err = kubectlWithInput(podYaml, "delete", "-n", ns, "-f", "-")
+		_, err = kubectlWithInput(podYaml, "delete", "--now=true", "-n", ns, "-f", "-")
 		Expect(err).ShouldNot(HaveOccurred())
 		_, err = kubectlWithInput(claimYAML, "delete", "-n", ns, "-f", "-")
 		Expect(err).ShouldNot(HaveOccurred())
@@ -221,7 +221,7 @@ func testE2E() {
 			)
 
 		By("deleting the Pod and PVC")
-		_, err = kubectlWithInput(podYaml, "delete", "-n", ns, "-f", "-")
+		_, err = kubectlWithInput(podYaml, "delete", "--now=true", "-n", ns, "-f", "-")
 		Expect(err).ShouldNot(HaveOccurred())
 		_, err = kubectlWithInput(claimYAML, "delete", "-n", ns, "-f", "-")
 		Expect(err).ShouldNot(HaveOccurred())
@@ -790,7 +790,7 @@ func testE2E() {
 		}, timeout).Should(Succeed())
 
 		By("deleting Pod for offline resizing")
-		_, err = kubectlWithInput(podYaml, "delete", "-n", ns, "-f", "-")
+		_, err = kubectlWithInput(podYaml, "delete", "--now=true", "-n", ns, "-f", "-")
 		Expect(err).ShouldNot(HaveOccurred())
 
 		By("resizing PVC offline")
@@ -873,7 +873,7 @@ func testE2E() {
 		}).Should(Succeed())
 
 		By("deleting the Pod and PVC")
-		_, err = kubectlWithInput(podYaml, "delete", "-n", ns, "-f", "-")
+		_, err = kubectlWithInput(podYaml, "delete", "--now=true", "-n", ns, "-f", "-")
 		Expect(err).ShouldNot(HaveOccurred())
 		_, err = kubectlWithInput(claimYAML, "delete", "-n", ns, "-f", "-")
 		Expect(err).ShouldNot(HaveOccurred())
