@@ -304,14 +304,16 @@ func (s *LogicalVolumeService) CreateSnapshot(ctx context.Context, node, dc, sou
 
 // ExpandVolume expands volume
 func (s *LogicalVolumeService) ExpandVolume(ctx context.Context, volumeID string, requestBytes int64) error {
-	logger.Info("k8s.ExpandVolume called", "volumeID", volumeID, "size", requestBytes)
+	logger := logger.WithValues("volume_id", volumeID, "size", requestBytes)
+	logger.Info("k8s.ExpandVolume called")
+	request := resource.NewQuantity(requestBytes, resource.BinarySI)
 
 	lv, err := s.GetVolume(ctx, volumeID)
 	if err != nil {
 		return err
 	}
 
-	err = s.updateSpecSize(ctx, volumeID, resource.NewQuantity(requestBytes, resource.BinarySI))
+	err = s.updateSpecSize(ctx, volumeID, request)
 	if err != nil {
 		return err
 	}
@@ -325,6 +327,12 @@ func (s *LogicalVolumeService) ExpandVolume(ctx context.Context, volumeID string
 		var changedLV topolvmv1.LogicalVolume
 		if err := s.getter.Get(ctx, client.ObjectKey{Name: lv.Name}, &changedLV); err != nil {
 			logger.Error(err, "failed to get LogicalVolume", "name", lv.Name)
+			return false, nil
+		}
+
+		if lv.Spec.Size.Cmp(*request) != 0 {
+			logger.Info("waiting for update of 'spec.size' to propagate"+
+				"to signal requested expansion", "name", lv.Name)
 			return false, nil
 		}
 
@@ -342,11 +350,12 @@ func (s *LogicalVolumeService) ExpandVolume(ctx context.Context, volumeID string
 
 		if changedLV.Status.CurrentSize.Value() != changedLV.Spec.Size.Value() {
 			logger.Info("waiting for update of 'status.currentSize' to be updated to 'spec.currentSize' "+
-				"to signal successful expansion", "name", lv.Name)
+				"to signal successful expansion", "name", lv.Name,
+				"status.currentSize", changedLV.Status.CurrentSize, "spec.size", changedLV.Spec.Size)
 			return false, nil
 		}
 
-		logger.Info("LogicalVolume successfully expanded", "volume_id", changedLV.Status.VolumeID)
+		logger.Info("LogicalVolume successfully expanded")
 		return true, nil
 	})
 }
