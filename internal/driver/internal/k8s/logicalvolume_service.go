@@ -247,7 +247,7 @@ func (s *LogicalVolumeService) DeleteVolume(ctx context.Context, volumeID string
 			Factor:   2,                      // factor for duration increase
 			Jitter:   0.1,
 			Steps:    math.MaxInt, // run for infinity; we assume context gets canceled
-		}, func(ctx context.Context) (done bool, err error) {
+		}, func(ctx context.Context) (bool, error) {
 			if err := s.getter.Get(ctx, client.ObjectKey{Name: lv.Name}, new(topolvmv1.LogicalVolume)); err != nil {
 				if apierrors.IsNotFound(err) {
 					return true, nil
@@ -321,7 +321,7 @@ func (s *LogicalVolumeService) ExpandVolume(ctx context.Context, volumeID string
 		Factor:   2,               // factor for duration increase
 		Jitter:   0.1,
 		Steps:    math.MaxInt, // run for infinity; we assume context gets canceled
-	}, func(ctx context.Context) (done bool, err error) {
+	}, func(ctx context.Context) (bool, error) {
 		var changedLV topolvmv1.LogicalVolume
 		if err := s.getter.Get(ctx, client.ObjectKey{Name: lv.Name}, &changedLV); err != nil {
 			logger.Error(err, "failed to get LogicalVolume", "name", lv.Name)
@@ -360,7 +360,7 @@ func (s *LogicalVolumeService) GetVolume(ctx context.Context, volumeID string) (
 func (s *LogicalVolumeService) updateSpecSize(ctx context.Context, volumeID string, size *resource.Quantity) error {
 	return wait.ExponentialBackoffWithContext(ctx,
 		retry.DefaultBackoff,
-		func(ctx context.Context) (done bool, err error) {
+		func(ctx context.Context) (bool, error) {
 			lv, err := s.GetVolume(ctx, volumeID)
 			if err != nil {
 				return true, err
@@ -391,7 +391,7 @@ func (s *LogicalVolumeService) waitForStatusUpdate(ctx context.Context, name str
 		Factor:   2,               // factor for duration increase
 		Jitter:   0.1,
 		Steps:    math.MaxInt, // run for infinity; we assume context gets canceled
-	}, func(ctx context.Context) (done bool, err error) {
+	}, func(ctx context.Context) (bool, error) {
 		var newLV topolvmv1.LogicalVolume
 		if err := s.getter.Get(ctx, client.ObjectKey{Name: name}, &newLV); err != nil {
 			logger.Error(err, "failed to get LogicalVolume", "name", name)
