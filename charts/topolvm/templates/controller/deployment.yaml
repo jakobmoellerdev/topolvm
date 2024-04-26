@@ -194,6 +194,7 @@ spec:
             - --leader-election-namespace={{ .Release.Namespace }}
             {{ end }}
             - --http-endpoint=:9810
+            - --timeout=300s
           ports:
             - containerPort: 9810
               name: csi-resizer

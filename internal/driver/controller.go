@@ -662,6 +662,7 @@ func (s controllerServerNoLocked) ControllerExpandVolume(ctx context.Context, re
 	}
 
 	if requestCapacityBytes <= currentSize.Value() {
+		logger.Info("ControllerExpandVolume is waiting for node expansion to complete")
 		// "NodeExpansionRequired" is still true because it is unknown
 		// whether node expansion is completed or not.
 		return &csi.ControllerExpandVolumeResponse{
