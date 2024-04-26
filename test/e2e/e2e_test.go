@@ -828,6 +828,18 @@ func testE2E() {
 		_, err = kubectlWithInput(claimYAML, "apply", "-n", ns, "-f", "-")
 		Expect(err).ShouldNot(HaveOccurred())
 
+		By("verifying PVC is updated")
+		Eventually(func() error {
+			var pvc corev1.PersistentVolumeClaim
+			if err := getObjects(&pvc, "pvc", "-n", ns, "topo-pvc"); err != nil {
+				return fmt.Errorf("failed to get PVC. err: %w", err)
+			}
+			if pvc.Status.Capacity.Storage().Cmp(*pvc.Spec.Resources.Requests.Storage()) != 0 {
+				return fmt.Errorf("capacity was not yet updated in status: %s", pvc.Status.Capacity.Storage().String())
+			}
+			return nil
+		}, timeout).Should(Succeed())
+
 		By("confirming that the specified device is resized in the Pod")
 		Eventually(func() error {
 			stdout, err := kubectl("exec", "-n", ns, "ubuntu", "--", "df", "--output=size", "/test1")
