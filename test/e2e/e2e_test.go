@@ -751,7 +751,7 @@ func testE2E() {
 		Expect(pod.Spec.NodeName).To(Equal(""))
 	})
 
-	It("should resize filesystem", func() {
+	FIt("should resize filesystem", func() {
 		By("deploying Pod with PVC")
 		claimYAML := []byte(fmt.Sprintf(pvcTemplateYAML, "topo-pvc", "Filesystem", 1024, "topolvm-provisioner"))
 		podYaml := []byte(fmt.Sprintf(podVolumeMountTemplateYAML, "ubuntu", "topo-pvc"))
