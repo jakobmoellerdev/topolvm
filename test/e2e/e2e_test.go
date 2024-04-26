@@ -875,7 +875,17 @@ func testE2E() {
 				"reason=VolumeResizeFailed"
 			var events corev1.EventList
 			err = getObjects(&events, "events", "-n", ns, "--field-selector="+fieldSelector)
-			Expect(err).To(BeEquivalentTo(ErrObjectNotFound))
+			wasModified := "the object has been modified; please apply your changes to the latest version and try again"
+			if !errors.Is(err, ErrObjectNotFound) {
+				for _, item := range events.Items {
+					if strings.Contains(item.Message, wasModified) {
+						By("VolumeResizeFailed event was skipped, " +
+							"as it was caused by kubelet resource version inconsistency")
+					} else {
+						Fail(fmt.Sprintf("unexpected VolumeResizeFailed event: %s", item.Message))
+					}
+				}
+			}
 
 			By("resizing PVC over vg capacity")
 			claimYAML = []byte(fmt.Sprintf(pvcTemplateYAML, "topo-pvc", "Filesystem", 100*1024, storageClass))
