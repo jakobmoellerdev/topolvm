@@ -253,7 +253,7 @@ func (s *LogicalVolumeService) DeleteVolume(ctx context.Context, volumeID string
 					return true, nil
 				}
 				logger.Error(err, "failed to get LogicalVolume", "name", lv.Name)
-				return false, nil
+				return false, err
 			}
 			logger.Info("waiting for LogicalVolume to be deleted", "name", lv.Name)
 			return false, nil

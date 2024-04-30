@@ -523,6 +523,7 @@ func (s *nodeServerNoLocked) NodeExpandVolume(ctx context.Context, req *csi.Node
 	}
 
 	logger.Info("NodeExpandVolume(fs) is succeeded")
+
 	// `capacity_bytes` in NodeExpandVolumeResponse is defined as OPTIONAL.
 	// If this field needs to be filled, the value should be equal to `.status.currentSize` of the corresponding
 	// `LogicalVolume`, but currently the node plugin does not have an access to the resource.
