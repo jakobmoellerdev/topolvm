@@ -99,14 +99,13 @@ func (t *PodRunner) ExecWithOptions(ctx context.Context, options ExecOptions) (s
 
 func (t *PodRunner) ExecCommand(ctx context.Context, pod, namespace, container string, command []string) (string, string, error) {
 	return t.ExecWithOptions(ctx, ExecOptions{
-		Command:            command,
-		Namespace:          namespace,
-		PodName:            pod,
-		ContainerName:      container,
-		Stdin:              nil,
-		CaptureStdout:      true,
-		CaptureStderr:      true,
-		PreserveWhitespace: false,
+		Command:       command,
+		Namespace:     namespace,
+		PodName:       pod,
+		ContainerName: container,
+		Stdin:         nil,
+		CaptureStdout: true,
+		CaptureStderr: true,
 	})
 }
 
