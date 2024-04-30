@@ -327,7 +327,7 @@ func (s *LogicalVolumeService) ExpandVolume(ctx context.Context, volumeID string
 		var changedLV topolvmv1.LogicalVolume
 		if err := s.getter.Get(ctx, client.ObjectKey{Name: lv.Name}, &changedLV); err != nil {
 			logger.Error(err, "failed to get LogicalVolume", "name", lv.Name)
-			return false, nil
+			return false, err
 		}
 
 		if changedLV.Spec.Size.Cmp(*request) != 0 {
@@ -337,7 +337,7 @@ func (s *LogicalVolumeService) ExpandVolume(ctx context.Context, volumeID string
 		}
 
 		if changedLV.Status.Code != codes.OK {
-			return true, status.Error(changedLV.Status.Code, changedLV.Status.Message)
+			return false, status.Error(changedLV.Status.Code, changedLV.Status.Message)
 		}
 
 		if changedLV.Status.CurrentSize == nil {
@@ -372,7 +372,7 @@ func (s *LogicalVolumeService) updateSpecSize(ctx context.Context, volumeID stri
 		func(ctx context.Context) (bool, error) {
 			lv, err := s.GetVolume(ctx, volumeID)
 			if err != nil {
-				return true, err
+				return false, err
 			}
 			lv.Spec.Size = *size
 			if lv.Annotations == nil {
@@ -383,10 +383,11 @@ func (s *LogicalVolumeService) updateSpecSize(ctx context.Context, volumeID stri
 			if err := s.writer.Update(ctx, lv); err != nil {
 				if apierrors.IsConflict(err) {
 					logger.Info("detected conflict when trying to update LogicalVolume spec", "name", lv.Name)
+					return false, nil
 				} else {
 					logger.Error(err, "failed to update LogicalVolume spec", "name", lv.Name)
+					return false, err
 				}
-				return false, nil
 			}
 			return true, nil
 		})
@@ -404,7 +405,7 @@ func (s *LogicalVolumeService) waitForStatusUpdate(ctx context.Context, name str
 		var newLV topolvmv1.LogicalVolume
 		if err := s.getter.Get(ctx, client.ObjectKey{Name: name}, &newLV); err != nil {
 			logger.Error(err, "failed to get LogicalVolume", "name", name)
-			return false, nil
+			return false, err
 		}
 		if newLV.Status.VolumeID != "" {
 			logger.Info("LogicalVolume successfully provisioned", "volume_id", newLV.Status.VolumeID)
@@ -417,7 +418,7 @@ func (s *LogicalVolumeService) waitForStatusUpdate(ctx context.Context, name str
 				// log this error but do not return this error, because newLV.Status.Message is more important
 				logger.Error(err, "failed to delete LogicalVolume")
 			}
-			return true, status.Error(newLV.Status.Code, newLV.Status.Message)
+			return false, status.Error(newLV.Status.Code, newLV.Status.Message)
 		}
 		return false, nil
 	})
