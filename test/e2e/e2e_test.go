@@ -880,7 +880,7 @@ func testE2E() {
 				for _, item := range events.Items {
 					if strings.Contains(item.Message, wasModified) {
 						By("VolumeResizeFailed event was skipped, " +
-							"as it was caused by kubelet resource version inconsistency")
+							"as it was caused by resizer resource version inconsistency")
 					} else {
 						Fail(fmt.Sprintf("unexpected VolumeResizeFailed event: %s", item.Message))
 					}
@@ -905,6 +905,27 @@ func testE2E() {
 					return nil
 				}
 			}).Should(Succeed())
+
+			By("confirming the PVC is not resized")
+			Eventually(func() error {
+				pvc := corev1.PersistentVolumeClaim{}
+				err := getObjects(&pvc, "pvc", "-n", ns, "topo-pvc")
+				if err != nil {
+					return fmt.Errorf("failed to get PVC. err: %w", err)
+				}
+				if pvc.Status.Capacity.Storage().Cmp(*pvc.Spec.Resources.Requests.Storage()) == 0 {
+					return errors.New("pvc was resized even though it should have been over vg capacity and rejected")
+				}
+				status, ok := pvc.Status.AllocatedResourceStatuses[corev1.ResourceStorage]
+				if !ok {
+					return errors.New("no allocated resource status")
+				}
+				if status != corev1.PersistentVolumeClaimControllerResizeFailed &&
+					status != corev1.PersistentVolumeClaimNodeResizeFailed {
+					return fmt.Errorf("unexpected pvc.status.allocatedResourceStatus[storage]: %s", status)
+				}
+				return nil
+			})
 
 			By("deleting the Pod and PVC")
 			_, err = kubectlWithInput(podYaml, "delete", "--now=true", "-n", ns, "-f", "-")
