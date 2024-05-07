@@ -348,7 +348,6 @@ func (s *LogicalVolumeService) ExpandVolume(ctx context.Context, volumeID string
 				"name", lv.Name,
 				"status.currentSize", changedLV.Status.CurrentSize,
 				"spec.size", changedLV.Spec.Size,
-				"status.currentSize", changedLV.Status.CurrentSize,
 				"request", request,
 			)
 			return false, nil
