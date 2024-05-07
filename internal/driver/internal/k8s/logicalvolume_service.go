@@ -330,12 +330,6 @@ func (s *LogicalVolumeService) ExpandVolume(ctx context.Context, volumeID string
 			return false, err
 		}
 
-		if changedLV.Spec.Size.Cmp(*request) != 0 {
-			logger.Info("waiting for update of 'spec.size' to propagate "+
-				"to signal requested expansion", "name", lv.Name)
-			return false, nil
-		}
-
 		if changedLV.Status.Code != codes.OK {
 			return false, status.Error(changedLV.Status.Code, changedLV.Status.Message)
 		}
@@ -348,10 +342,14 @@ func (s *LogicalVolumeService) ExpandVolume(ctx context.Context, volumeID string
 			return false, nil
 		}
 
-		if changedLV.Status.CurrentSize.Value() != changedLV.Spec.Size.Value() {
-			logger.Info("waiting for update of 'status.currentSize' to be updated to 'spec.currentSize' "+
-				"to signal successful expansion", "name", lv.Name,
-				"status.currentSize", changedLV.Status.CurrentSize, "spec.size", changedLV.Spec.Size)
+		if changedLV.Status.CurrentSize.Cmp(*request) != 0 {
+			logger.Info("waiting for update of 'status.currentSize' to be updated to signal successful expansion",
+				"name", lv.Name,
+				"status.currentSize", changedLV.Status.CurrentSize,
+				"spec.size", changedLV.Spec.Size,
+				"status.currentSize", changedLV.Status.CurrentSize,
+				"request", request,
+			)
 			return false, nil
 		}
 
