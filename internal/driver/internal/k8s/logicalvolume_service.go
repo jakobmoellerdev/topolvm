@@ -241,23 +241,23 @@ func (s *LogicalVolumeService) DeleteVolume(ctx context.Context, volumeID string
 	}
 
 	// wait until delete the target volume
-	return wait.ExponentialBackoffWithContext(ctx,
-		wait.Backoff{
-			Duration: 100 * time.Millisecond, // initial backoff
-			Factor:   2,                      // factor for duration increase
-			Jitter:   0.1,
-			Steps:    math.MaxInt, // run for infinity; we assume context gets canceled
-		}, func(ctx context.Context) (bool, error) {
-			if err := s.getter.Get(ctx, client.ObjectKey{Name: lv.Name}, new(topolvmv1.LogicalVolume)); err != nil {
-				if apierrors.IsNotFound(err) {
-					return true, nil
-				}
-				logger.Error(err, "failed to get LogicalVolume", "name", lv.Name)
-				return false, err
+	return wait.Backoff{
+		Duration: 100 * time.Millisecond, // initial backoff
+		Factor:   2,                      // factor for duration increase
+		Jitter:   0.1,
+		Steps:    math.MaxInt, // run for infinity; we assume context gets canceled
+		Cap:      10 * time.Second,
+	}.DelayFunc().Until(ctx, true, false, func(ctx context.Context) (bool, error) {
+		if err := s.getter.Get(ctx, client.ObjectKey{Name: lv.Name}, new(topolvmv1.LogicalVolume)); err != nil {
+			if apierrors.IsNotFound(err) {
+				return true, nil
 			}
-			logger.Info("waiting for LogicalVolume to be deleted", "name", lv.Name)
-			return false, nil
-		})
+			logger.Error(err, "failed to get LogicalVolume", "name", lv.Name)
+			return false, err
+		}
+		logger.Info("waiting for LogicalVolume to be deleted", "name", lv.Name)
+		return false, nil
+	})
 }
 
 // CreateSnapshot creates a snapshot of existing volume.
@@ -318,12 +318,13 @@ func (s *LogicalVolumeService) ExpandVolume(ctx context.Context, volumeID string
 		return err
 	}
 
-	return wait.ExponentialBackoffWithContext(ctx, wait.Backoff{
+	return wait.Backoff{
 		Duration: 1 * time.Second, // initial backoff
 		Factor:   2,               // factor for duration increase
 		Jitter:   0.1,
 		Steps:    math.MaxInt, // run for infinity; we assume context gets canceled
-	}, func(ctx context.Context) (bool, error) {
+		Cap:      10 * time.Second,
+	}.DelayFunc().Until(ctx, true, false, func(ctx context.Context) (bool, error) {
 		var changedLV topolvmv1.LogicalVolume
 		if err := s.getter.Get(ctx, client.ObjectKey{Name: lv.Name}, &changedLV); err != nil {
 			logger.Error(err, "failed to get LogicalVolume", "name", lv.Name)
@@ -394,12 +395,13 @@ func (s *LogicalVolumeService) updateSpecSize(ctx context.Context, volumeID stri
 // waitForStatusUpdate waits for logical volume creation/failure/timeout, whichever comes first.
 func (s *LogicalVolumeService) waitForStatusUpdate(ctx context.Context, name string) (string, error) {
 	var volumeID string
-	return volumeID, wait.ExponentialBackoffWithContext(ctx, wait.Backoff{
+	return volumeID, wait.Backoff{
 		Duration: 1 * time.Second, // initial backoff
 		Factor:   2,               // factor for duration increase
 		Jitter:   0.1,
 		Steps:    math.MaxInt, // run for infinity; we assume context gets canceled
-	}, func(ctx context.Context) (bool, error) {
+		Cap:      10 * time.Second,
+	}.DelayFunc().Until(ctx, true, false, func(ctx context.Context) (bool, error) {
 		var newLV topolvmv1.LogicalVolume
 		if err := s.getter.Get(ctx, client.ObjectKey{Name: name}, &newLV); err != nil {
 			logger.Error(err, "failed to get LogicalVolume", "name", name)
