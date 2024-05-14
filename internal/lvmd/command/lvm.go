@@ -187,7 +187,8 @@ func (vg *VolumeGroup) convertLV(lv lv) *LogicalVolume {
 		size = lv.originSize
 	}
 
-	return newLogicalVolume(
+	return &LogicalVolume{
+		fullName(lv.name, vg),
 		lv.name,
 		lv.path,
 		vg,
@@ -197,7 +198,8 @@ func (vg *VolumeGroup) convertLV(lv lv) *LogicalVolume {
 		uint32(lv.major),
 		uint32(lv.minor),
 		lv.tags,
-	)
+		lv.attr,
+	}
 }
 
 // CreateVolume creates logical volume in this volume group.
@@ -434,22 +436,7 @@ type LogicalVolume struct {
 	devMajor uint32
 	devMinor uint32
 	tags     []string
-}
-
-func newLogicalVolume(name, path string, vg *VolumeGroup, size uint64, origin, pool *string, major, minor uint32, tags []string) *LogicalVolume {
-	fullname := fullName(name, vg)
-	return &LogicalVolume{
-		fullname,
-		name,
-		path,
-		vg,
-		size,
-		origin,
-		pool,
-		major,
-		minor,
-		tags,
-	}
+	attr     string
 }
 
 // Name returns a volume name.
@@ -513,9 +500,14 @@ func (l *LogicalVolume) MinorNumber() uint32 {
 	return l.devMinor
 }
 
-// Tags returns the tags member.
+// Tags returns the tags of the logical volume.
 func (l *LogicalVolume) Tags() []string {
 	return l.tags
+}
+
+// Attr returns the attr flag field of the logical volume.
+func (l *LogicalVolume) Attr() string {
+	return l.attr
 }
 
 // ThinSnapshot takes a thin snapshot of a volume.
