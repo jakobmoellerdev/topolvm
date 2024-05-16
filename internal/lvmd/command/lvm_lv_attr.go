@@ -1,7 +1,32 @@
 package command
 
 import (
+	"errors"
 	"fmt"
+)
+
+var (
+	ErrPartialActivation                         = errors.New("found partial activation of physical volumes, one or more physical volumes are setup incorrectly")
+	ErrUnknownVolumeHealth                       = errors.New("unknown volume health reported, verification on the host system is required")
+	ErrWriteCacheError                           = errors.New("write cache error signifies that dm-writecache reports an error")
+	ErrThinPoolFailed                            = errors.New("thin pool encounters serious failures and hence no further I/O is permitted at all")
+	ErrThinPoolOutOfDataSpace                    = errors.New("thin pool is out of data space, no further data can be written to the thin pool without extension")
+	ErrThinPoolMetadataReadOnly                  = errors.New("metadata read only signifies that thin pool encounters certain types of failures, but it's still possible to do data reads. However, no metadata changes are allowed")
+	ErrThinVolumeFailed                          = errors.New("the underlying thin pool entered a failed state and no further I/O is permitted")
+	ErrRAIDRefreshNeeded                         = errors.New("RAID volume requires a refresh, one or more Physical Volumes have suffered a write error. This could be due to temporary failure of the Physical Volume or an indication it is failing. The device should be refreshed or replaced")
+	ErrRAIDMismatchesExist                       = errors.New("RAID volume has portions of the array that are not coherent. Inconsistencies are detected by initiating a check RAID logical volume. The scrubbing operations, \"check\" and \"repair\", can be performed on a RAID volume via the \"lvchange\" command")
+	ErrRAIDReshaping                             = errors.New("RAID volume is currently reshaping. Reshaping signifies a RAID Logical Volume is either undergoing a stripe addition/removal, a stripe size or RAID algorithm change")
+	ErrRAIDReshapeRemoved                        = errors.New("RAID volume signifies freed raid images after reshaping")
+	ErrRAIDWriteMostly                           = errors.New("RAID volume is marked as write-mostly. this signifies the devices in a RAID 1 logical volume have been marked write-mostly. This means that reading from this device will be avoided, and other devices will be preferred for reading (unless no other devices are available). This minimizes the I/O to the specified device")
+	ErrLogicalVolumeSuspended                    = errors.New("logical volume is in a suspended state, no I/O is permitted")
+	ErrInvalidSnapshot                           = errors.New("logical volume is an invalid snapshot, no I/O is permitted")
+	ErrSnapshotMergeFailed                       = errors.New("snapshot merge failed, no I/O is permitted")
+	ErrMappedDevicePresentWithInactiveTables     = errors.New("mapped device present with inactive tables, no I/O is permitted")
+	ErrMappedDevicePresentWithoutTables          = errors.New("mapped device present without tables, no I/O is permitted")
+	ErrThinPoolCheckNeeded                       = errors.New("a thin pool check is needed")
+	ErrUnknownVolumeState                        = errors.New("unknown volume state, verification on the host system is required")
+	ErrHistoricalVolumeState                     = errors.New("historical volume state (volume no longer exists but is kept around in logs), verification on the host system is required")
+	ErrLogicalVolumeUnderlyingDeviceStateUnknown = errors.New("logical volume underlying device state is unknown, verification on the host system is required")
 )
 
 type VolumeType rune
@@ -25,7 +50,7 @@ const (
 	VolumeTypeThinPool                   VolumeType = 't'
 	VolumeTypeThinPoolData               VolumeType = 'T'
 	VolumeTypeThinPoolMetadata           VolumeType = 'e'
-	VolumeTypeNone                       VolumeType = '-'
+	VolumeTypeDefault                    VolumeType = '-'
 )
 
 type Permissions rune
@@ -95,6 +120,7 @@ const (
 	OpenTargetThin     = 't'
 	OpenTargetUnknown  = 'u'
 	OpenTargetVirtual  = 'v'
+	OpenTargetNone     = '-'
 )
 
 type Zero rune
@@ -109,7 +135,7 @@ type VolumeHealth rune
 const (
 	VolumeHealthPartialActivation        = 'p'
 	VolumeHealthUnknown                  = 'X'
-	VolumeHealthMissing                  = '-'
+	VolumeHealthOK                       = '-'
 	VolumeHealthRAIDRefreshNeeded        = 'r'
 	VolumeHealthRAIDMismatchesExist      = 'm'
 	VolumeHealthRAIDWriteMostly          = 'w'
@@ -119,6 +145,13 @@ const (
 	VolumeHealthThinPoolOutOfDataSpace   = 'D'
 	VolumeHealthThinPoolMetadataReadOnly = 'M'
 	VolumeHealthWriteCacheError          = 'E'
+)
+
+type SkipActivation rune
+
+const (
+	SkipActivationTrue  SkipActivation = 'k'
+	SkipActivationFalse SkipActivation = '-'
 )
 
 // LvAttr has mapped lv_attr information, see https://linux.die.net/man/8/lvs
@@ -135,11 +168,15 @@ type LvAttr struct {
 	OpenTarget
 	Zero
 	VolumeHealth
+	SkipActivation
 }
 
+const lvAttrLength = 10
+
 func ParsedLvAttr(raw string) (LvAttr, error) {
-	if len(raw) != 10 {
-		return LvAttr{}, fmt.Errorf("%s is an invalid length lv_attr", raw)
+	if len(raw) != lvAttrLength {
+		return LvAttr{}, fmt.Errorf("%s is an invalid length lv_attr, expected %v, but got %v",
+			raw, lvAttrLength, len(raw))
 	}
 	return LvAttr{
 		VolumeType(raw[0]),
@@ -151,6 +188,7 @@ func ParsedLvAttr(raw string) (LvAttr, error) {
 		OpenTarget(raw[6]),
 		Zero(raw[7]),
 		VolumeHealth(raw[8]),
+		SkipActivation(raw[9]),
 	}, nil
 }
 
@@ -174,88 +212,70 @@ func (l LvAttr) String() string {
 // All failed known states are reported with an error message.
 func (l LvAttr) VerifyHealth() error {
 	if l.VolumeHealth == VolumeHealthPartialActivation {
-		return fmt.Errorf("found partial activation of physical volumes, one or more physical volumes are setup incorrectly")
+		return ErrPartialActivation
 	}
 	if l.VolumeHealth == VolumeHealthUnknown {
-		return fmt.Errorf("unknown volume health reported, verification on the host system is required")
+		return ErrUnknownVolumeHealth
 	}
 	if l.VolumeHealth == VolumeHealthWriteCacheError {
-		return fmt.Errorf("write cache error signifies that dm-writecache reports an error")
+		return ErrWriteCacheError
 	}
 
 	if l.VolumeType == VolumeTypeThinPool {
 		switch l.VolumeHealth {
 		case VolumeHealthThinFailed:
-			return fmt.Errorf("thin pool encounters serious failures and hence no further I/O is permitted at all")
+			return ErrThinPoolFailed
 		case VolumeHealthThinPoolOutOfDataSpace:
-			return fmt.Errorf("thin pool is out of data space, no further data can be written to the thin pool without extension")
+			return ErrThinPoolOutOfDataSpace
 		case VolumeHealthThinPoolMetadataReadOnly:
-			return fmt.Errorf("metadata read only signifies that thin pool encounters certain types of failures, " +
-				"but it's still possible to do data reads. However, no metadata changes are allowed")
+			return ErrThinPoolMetadataReadOnly
 		}
 	}
 
 	if l.VolumeType == VolumeTypeThinVolume {
 		switch l.VolumeHealth {
 		case VolumeHealthThinFailed:
-			return fmt.Errorf("the underlying thin pool entered a failed state and no further I/O is permitted")
+			return ErrThinVolumeFailed
 		}
 	}
 
 	if l.VolumeType == VolumeTypeRAID || l.VolumeType == VolumeTypeRAIDNoInitialSync {
 		switch l.VolumeHealth {
 		case VolumeHealthRAIDRefreshNeeded:
-			return fmt.Errorf("RAID volume requires a refresh, one or more Physical Volumes have suffered a write error." +
-				"This could be due to temporary failure of the Physical Volume or an indication it is failing. " +
-				"The device should be refreshed or replaced")
+			return ErrRAIDRefreshNeeded
 		case VolumeHealthRAIDMismatchesExist:
-			return fmt.Errorf("RAID volume has portions of the array that are not coherent. " +
-				"Inconsistencies are detected by initiating a check RAID logical volume." +
-				"The  scrubbing  operations, \"check\" and \"repair\", can be performed on a " +
-				"RAID volume via the \"lvchange\" command.")
+			return ErrRAIDMismatchesExist
 		case VolumeHealthRAIDReshaping:
-			return fmt.Errorf("RAID volume is currently reshaping. " +
-				"Reshaping signifies a RAID Logical Volume is either undergoing a stripe addition/removal, " +
-				"a stripe size or RAID algorithm change")
+			return ErrRAIDReshaping
 		case VolumeHealthRAIDReshapeRemoved:
-			return fmt.Errorf("RAID volume signifies freed raid images after reshaping")
+			return ErrRAIDReshapeRemoved
 		case VolumeHealthRAIDWriteMostly:
-			return fmt.Errorf("RAID volume is marked as write-mostly. this signifies the devices in a RAID 1 logical volume have been marked write-mostly." +
-				"This means that reading from this device will be avoided, and other devices will be preferred for reading (unless no other devices are available). " +
-				"this minimizes the I/O to the specified device")
+			return ErrRAIDWriteMostly
 		}
 	}
 
 	switch l.State {
-	case StateSuspended:
-		fallthrough
-	case StateSuspendedSnapshot:
-		return fmt.Errorf("logical volume is in a suspended state, no I/O is permitted")
+	case StateSuspended, StateSuspendedSnapshot:
+		return ErrLogicalVolumeSuspended
 	case StateInvalidSnapshot:
-		return fmt.Errorf("logical volume is an invalid snapshot, no I/O is permitted")
-	case StateSuspendedSnapshotMergeFailed:
-		fallthrough
-	case StateSnapshotMergeFailed:
-		return fmt.Errorf("snapshot merge failed, no I/O is permitted")
+		return ErrInvalidSnapshot
+	case StateSnapshotMergeFailed, StateSuspendedSnapshotMergeFailed:
+		return ErrSnapshotMergeFailed
 	case StateMappedDevicePresentWithInactiveTables:
-		return fmt.Errorf("mapped device present with inactive tables, no I/O is permitted")
+		return ErrMappedDevicePresentWithInactiveTables
 	case StateMappedDevicePresentWithoutTables:
-		return fmt.Errorf("mapped device present without tables, no I/O is permitted")
-	case StateSuspendedThinPoolCheckNeeded:
-		fallthrough
-	case StateThinPoolCheckNeeded:
-		return fmt.Errorf("a thin pool check is needed")
+		return ErrMappedDevicePresentWithoutTables
+	case StateThinPoolCheckNeeded, StateSuspendedThinPoolCheckNeeded:
+		return ErrThinPoolCheckNeeded
 	case StateUnknown:
-		return fmt.Errorf("unknown volume state, verification on the host system is required")
+		return ErrUnknownVolumeState
 	case StateHistorical:
-		return fmt.Errorf("historical volume state (volume no longer exists but is kept around in logs), " +
-			"verification on the host system is required")
+		return ErrHistoricalVolumeState
 	}
 
 	switch l.Open {
 	case OpenUnknown:
-		return fmt.Errorf("logical volume underlying device state is unknown, " +
-			"verification on the host system is required")
+		return ErrLogicalVolumeUnderlyingDeviceStateUnknown
 	}
 
 	return nil
