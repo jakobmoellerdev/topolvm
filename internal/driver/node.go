@@ -3,6 +3,7 @@ package driver
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -432,25 +433,13 @@ func (s *nodeServerNoLocked) NodeGetVolumeStats(ctx context.Context, req *csi.No
 	if lv == nil {
 		return nil, status.Errorf(codes.NotFound, "failed to find LV: %s", volumeID)
 	}
-	attr, err := command.ParsedLvAttr(lv.GetAttr())
+
+	volumeCondition, err := getVolumeCondition(lv)
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to parse attributes returned from logical volume service: %v", err)
+		return nil, status.Errorf(codes.Internal, err.Error())
 	}
 
-	var volumeCondition csi.VolumeCondition
-	if err := attr.VerifyHealth(); err != nil {
-		volumeCondition = csi.VolumeCondition{
-			Abnormal: true,
-			Message:  err.Error(),
-		}
-	} else {
-		volumeCondition = csi.VolumeCondition{
-			Abnormal: false,
-			Message:  "volume is healthy and operating normally",
-		}
-	}
-
-	return &csi.NodeGetVolumeStatsResponse{Usage: usage, VolumeCondition: &volumeCondition}, nil
+	return &csi.NodeGetVolumeStatsResponse{Usage: usage, VolumeCondition: volumeCondition}, nil
 }
 
 func (s *nodeServerNoLocked) NodeExpandVolume(ctx context.Context, req *csi.NodeExpandVolumeRequest) (*csi.NodeExpandVolumeResponse, error) {
@@ -559,4 +548,24 @@ func (s *nodeServerNoLocked) NodeGetInfo(ctx context.Context, req *csi.NodeGetIn
 			},
 		},
 	}, nil
+}
+
+func getVolumeCondition(lv *proto.LogicalVolume) (*csi.VolumeCondition, error) {
+	attr, err := command.ParsedLvAttr(lv.GetAttr())
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse attributes returned from logical volume service: %w", err)
+	}
+	var volumeCondition csi.VolumeCondition
+	if err := attr.VerifyHealth(); err != nil {
+		volumeCondition = csi.VolumeCondition{
+			Abnormal: true,
+			Message:  err.Error(),
+		}
+	} else {
+		volumeCondition = csi.VolumeCondition{
+			Abnormal: false,
+			Message:  "volume is healthy and operating normally",
+		}
+	}
+	return &volumeCondition, nil
 }
