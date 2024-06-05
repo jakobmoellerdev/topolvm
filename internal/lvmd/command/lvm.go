@@ -13,11 +13,6 @@ import (
 	utilexec "k8s.io/utils/exec"
 )
 
-const (
-	nsenter = "/usr/bin/nsenter"
-	lvm     = "/sbin/lvm"
-)
-
 // ErrNotFound is returned when a VG or LV is not found.
 var ErrNotFound = errors.New("not found")
 
@@ -620,7 +615,7 @@ func (l *LogicalVolume) Resize(ctx context.Context, newSize uint64) error {
 		if !found {
 			mountDir, err := os.MkdirTemp("", "topolvm-tmp-mount-*")
 			defer func() {
-				_ = os.RemoveAll(mountDir)
+				err = errors.Join(err, os.RemoveAll(mountDir))
 			}()
 			if err != nil {
 				return fmt.Errorf("cannot create temporary directory for temporary mount: %v", err)
@@ -629,13 +624,13 @@ func (l *LogicalVolume) Resize(ctx context.Context, newSize uint64) error {
 			if fs == "xfs" {
 				mountoptions = append(mountoptions, "nouuid")
 			}
-			if err := mounter.Mount(l.Path(), mountDir, fs, mountoptions); err != nil {
+			if err = mounter.Mount(l.Path(), mountDir, fs, mountoptions); err != nil {
 				return fmt.Errorf("cannot mount filesystem for resize operation: %v", err)
 			}
 			defer func() {
-				_ = mountutil.CleanupMountPoint(mountDir, mounter, false)
+				err = errors.Join(err, mountutil.CleanupMountPoint(mountDir, mounter, false))
 			}()
-			if _, err := resizer.Resize(l.Path(), mountDir); err != nil {
+			if _, err = resizer.Resize(l.Path(), mountDir); err != nil {
 				return fmt.Errorf("cannot resize filesystem: %v", err)
 			}
 		}
@@ -655,9 +650,7 @@ func (l *LogicalVolume) Resize(ctx context.Context, newSize uint64) error {
 func (vg *VolumeGroup) RemoveVolume(ctx context.Context, name string) error {
 	err := callLVM(ctx, "lvremove", "-f", fullName(name, vg))
 
-	if lvmErr, ok := AsLVMError(err); ok && lvmErr.ExitCode() == 5 {
-		// lvremove returns 5 if the volume does not exist, so we can convert this to ErrNotFound
-		// join it to the original error so that the caller can still see the stderr output.
+	if IsLVMNotFound(err) {
 		return errors.Join(ErrNotFound, err)
 	}
 

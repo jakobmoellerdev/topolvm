@@ -2,6 +2,7 @@ package driver
 
 import (
 	"context"
+	"errors"
 	"io"
 	"os"
 	"path/filepath"
@@ -218,19 +219,17 @@ func (s *nodeServerNoLocked) nodePublishFilesystemVolume(req *csi.NodePublishVol
 	}
 
 	fsType, err := filesystem.DetectFilesystem(lv.GetPath())
-
-	mounted := false
-	if !os.IsNotExist(err) || strings.Contains(err.Error(), "no such file or directory") {
-		if fsType != "" && fsType != mountOption.FsType {
-			return status.Errorf(codes.Internal, "target device is already formatted with different filesystem: volume=%s, current=%s, new:%s", req.GetVolumeId(), fsType, mountOption.FsType)
-		}
-
-		mounted, err = filesystem.IsMounted(lv.GetPath(), req.GetTargetPath())
-		if err != nil {
-			return status.Errorf(codes.Internal, "mount check failed: target=%s, error=%v", req.GetTargetPath(), err)
-		}
-	} else if err != nil {
+	if err != nil {
 		return status.Errorf(codes.Internal, "filesystem check failed: volume=%s, error=%v", req.GetVolumeId(), err)
+	}
+
+	if fsType != "" && fsType != mountOption.FsType {
+		return status.Errorf(codes.Internal, "target device is already formatted with different filesystem: volume=%s, current=%s, new:%s", req.GetVolumeId(), fsType, mountOption.FsType)
+	}
+
+	mounted, err := s.mounter.IsMountPoint(req.GetTargetPath())
+	if err != nil {
+		return status.Errorf(codes.Internal, "mount check failed: target=%s, error=%v", req.GetTargetPath(), err)
 	}
 
 	if !mounted {
@@ -343,12 +342,8 @@ func (s *nodeServerNoLocked) NodeUnpublishVolume(ctx context.Context, req *csi.N
 func (s *nodeServerNoLocked) nodeUnpublishFilesystemVolume(req *csi.NodeUnpublishVolumeRequest) error {
 	targetPath := req.GetTargetPath()
 
-	if err := s.mounter.Unmount(targetPath); err != nil {
+	if err := mountutil.CleanupMountPoint(targetPath, s.mounter, true); err != nil {
 		return status.Errorf(codes.Internal, "unmount failed for %s: error=%v", targetPath, err)
-	}
-
-	if err := os.RemoveAll(targetPath); err != nil {
-		return status.Errorf(codes.Internal, "remove dir failed for %s: error=%v", targetPath, err)
 	}
 
 	nodeLogger.Info("NodeUnpublishVolume(fs) is succeeded",
@@ -358,12 +353,10 @@ func (s *nodeServerNoLocked) nodeUnpublishFilesystemVolume(req *csi.NodeUnpublis
 }
 
 func (s *nodeServerNoLocked) nodeUnpublishBlockVolume(req *csi.NodeUnpublishVolumeRequest) error {
-	if err := s.mounter.Unmount(req.GetTargetPath()); err != nil {
-		return status.Errorf(codes.Internal, "unmount failed for %s: error=%v", req.GetTargetPath(), err)
-	}
+	targetPath := req.GetTargetPath()
 
-	if err := os.Remove(req.GetTargetPath()); err != nil {
-		return status.Errorf(codes.Internal, "remove failed for %s: error=%v", req.GetTargetPath(), err)
+	if err := mountutil.CleanupMountPoint(targetPath, s.mounter, true); err != nil {
+		return status.Errorf(codes.Internal, "unmount failed for %s: error=%v", targetPath, err)
 	}
 
 	nodeLogger.Info("NodeUnpublishVolume(block) is succeeded",
@@ -418,11 +411,12 @@ func (s *nodeServerNoLocked) NodeGetVolumeStats(ctx context.Context, req *csi.No
 
 	var usage []*csi.VolumeUsage
 	if sfs.Blocks > 0 {
+		//nolint:unconvert // explicit conversion of Frsize for s390x.
 		usage = append(usage, &csi.VolumeUsage{
 			Unit:      csi.VolumeUsage_BYTES,
-			Total:     int64(sfs.Blocks) * sfs.Frsize,
-			Used:      int64(sfs.Blocks-sfs.Bfree) * sfs.Frsize,
-			Available: int64(sfs.Bavail) * sfs.Frsize,
+			Total:     int64(sfs.Blocks) * int64(sfs.Frsize),
+			Used:      int64(sfs.Blocks-sfs.Bfree) * int64(sfs.Frsize),
+			Available: int64(sfs.Bavail) * int64(sfs.Frsize),
 		})
 	}
 	if sfs.Files > 0 {
@@ -439,13 +433,12 @@ func (s *nodeServerNoLocked) NodeGetVolumeStats(ctx context.Context, req *csi.No
 func (s *nodeServerNoLocked) NodeExpandVolume(ctx context.Context, req *csi.NodeExpandVolumeRequest) (*csi.NodeExpandVolumeResponse, error) {
 	volumeID := req.GetVolumeId()
 	volumePath := req.GetVolumePath()
-
-	nodeLogger.Info("NodeExpandVolume is called",
-		"volume_id", volumeID,
+	logger := nodeLogger.WithValues("volume_id", volumeID,
 		"volume_path", volumePath,
 		"required", req.GetCapacityRange().GetRequiredBytes(),
-		"limit", req.GetCapacityRange().GetLimitBytes(),
-	)
+		"limit", req.GetCapacityRange().GetLimitBytes())
+
+	logger.Info("NodeExpandVolume is called")
 
 	if len(volumeID) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "no volume_id is provided")
@@ -465,10 +458,7 @@ func (s *nodeServerNoLocked) NodeExpandVolume(ctx context.Context, req *csi.Node
 	}
 
 	if isBlock := req.GetVolumeCapability().GetBlock() != nil; isBlock {
-		nodeLogger.Info("NodeExpandVolume(block) is skipped",
-			"volume_id", volumeID,
-			"target_path", volumePath,
-		)
+		logger.Info("NodeExpandVolume(block) is skipped")
 		return &csi.NodeExpandVolumeResponse{}, nil
 	}
 
@@ -476,7 +466,7 @@ func (s *nodeServerNoLocked) NodeExpandVolume(ctx context.Context, req *csi.Node
 	deviceClass := topolvm.DefaultDeviceClassName
 	if err == nil {
 		deviceClass = lvr.Spec.DeviceClass
-	} else if err != k8s.ErrVolumeNotFound {
+	} else if !errors.Is(err, k8s.ErrVolumeNotFound) {
 		return nil, err
 	}
 	lv, err := s.getLvFromContext(ctx, deviceClass, volumeID)
@@ -497,16 +487,15 @@ func (s *nodeServerNoLocked) NodeExpandVolume(ctx context.Context, req *csi.Node
 	if len(devicePath) == 0 {
 		return nil, status.Errorf(codes.Internal, "filesystem %s is not mounted at %s", volumeID, volumePath)
 	}
+	logger = logger.WithValues("device", devicePath)
 
+	logger.Info("triggering filesystem resize")
 	r := mountutil.NewResizeFs(s.mounter.Exec)
 	if _, err := r.Resize(lv.GetPath(), volumePath); err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to resize filesystem %s (mounted at: %s): %v", volumeID, volumePath, err)
 	}
 
-	nodeLogger.Info("NodeExpandVolume(fs) is succeeded",
-		"volume_id", volumeID,
-		"target_path", volumePath,
-	)
+	logger.Info("NodeExpandVolume(fs) is succeeded")
 
 	// `capacity_bytes` in NodeExpandVolumeResponse is defined as OPTIONAL.
 	// If this field needs to be filled, the value should be equal to `.status.currentSize` of the corresponding
