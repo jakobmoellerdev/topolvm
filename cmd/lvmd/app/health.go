@@ -6,6 +6,7 @@ import (
 	"net"
 
 	"github.com/spf13/cobra"
+	"github.com/topolvm/topolvm/cmd/lvmd/app/config"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/health/grpc_health_v1"
@@ -16,13 +17,12 @@ var healthCmd = &cobra.Command{
 	Short: "Health check for lvmd server",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		cmd.SilenceUsage = true
-		return healthSubMain(cmd.Context(), config)
+		return healthSubMain(cmd.Context())
 	},
 }
 
-func healthSubMain(ctx context.Context, config *Config) error {
-	err := loadConfFile(ctx, cfgFilePath)
-	if err != nil {
+func healthSubMain(ctx context.Context) error {
+	if err := config.Load(ctx, cfgFilePath); err != nil {
 		return err
 	}
 	dialer := &net.Dialer{}
@@ -30,7 +30,7 @@ func healthSubMain(ctx context.Context, config *Config) error {
 		return dialer.DialContext(ctx, "unix", a)
 	}
 	conn, err := grpc.Dial(
-		config.SocketName,
+		config.Get().SocketName,
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 		grpc.WithContextDialer(dialFunc),
 	)

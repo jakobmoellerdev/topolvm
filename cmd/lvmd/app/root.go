@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"net"
@@ -13,6 +14,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/topolvm/topolvm"
+	"github.com/topolvm/topolvm/cmd/lvmd/app/config"
 	"github.com/topolvm/topolvm/internal/lvmd"
 	"github.com/topolvm/topolvm/internal/lvmd/command"
 	"github.com/topolvm/topolvm/pkg/lvmd/proto"
@@ -26,9 +28,10 @@ import (
 )
 
 var (
-	cfgFilePath string
-	lvmPath     string
-	zapOpts     zap.Options
+	cfgFilePath     string
+	lvmPath         string
+	hotReloadConfig bool
+	zapOpts         zap.Options
 )
 
 // rootCmd represents the base command when called without any subcommands
@@ -51,17 +54,33 @@ volume group.
 	},
 }
 
-func subMain(ctx context.Context) error {
+func subMain(cmdCtx context.Context) error {
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&zapOpts)))
-	logger := log.FromContext(ctx)
+	logger := log.FromContext(cmdCtx)
 
 	command.SetLVMPath(lvmPath)
 
-	if err := loadConfFile(ctx, cfgFilePath); err != nil {
-		return err
+	// this is the actual context used for a lvmd instance
+	// it may be cancelled if the configuration file is modified
+	// and the services need to be restarted
+	var ctx context.Context
+	if hotReloadConfig {
+		logger.Info("hot-reload enabled, watching configuration file for changes")
+		var err error
+		if ctx, err = config.LoadAndCancelOnReload(cmdCtx, cfgFilePath); err != nil {
+			return err
+		}
+	} else {
+		logger.Info("hot-reload disabled, loading configuration file once at startup into memory")
+		ctx = cmdCtx
+		if err := config.Load(ctx, cfgFilePath); err != nil {
+			return err
+		}
 	}
 
-	if err := lvmd.ValidateDeviceClasses(config.DeviceClasses); err != nil {
+	cfg := config.Get()
+
+	if err := lvmd.ValidateDeviceClasses(cfg.DeviceClasses); err != nil {
 		return err
 	}
 
@@ -71,7 +90,7 @@ func subMain(ctx context.Context) error {
 		return err
 	}
 
-	for _, dc := range config.DeviceClasses {
+	for _, dc := range cfg.DeviceClasses {
 		vg, err := command.SearchVolumeGroupList(vgs, dc.VolumeGroup)
 		if err != nil {
 			logger.Error(err, "volume group not found", "volume_group", dc.VolumeGroup)
@@ -88,24 +107,24 @@ func subMain(ctx context.Context) error {
 	}
 
 	// UNIX domain socket file should be removed before listening.
-	err = os.Remove(config.SocketName)
+	err = os.Remove(cfg.SocketName)
 	if err != nil && !os.IsNotExist(err) {
 		return err
 	}
 
-	lis, err := net.Listen("unix", config.SocketName)
+	lis, err := net.Listen("unix", cfg.SocketName)
 	if err != nil {
 		return err
 	}
 	grpcServer := grpc.NewServer()
-	dcm := lvmd.NewDeviceClassManager(config.DeviceClasses)
-	ocm := lvmd.NewLvcreateOptionClassManager(config.LvcreateOptionClasses)
+	dcm := lvmd.NewDeviceClassManager(cfg.DeviceClasses)
+	ocm := lvmd.NewLvcreateOptionClassManager(cfg.LvcreateOptionClasses)
 	vgService, notifier := lvmd.NewVGService(dcm)
 	proto.RegisterVGServiceServer(grpcServer, vgService)
 	proto.RegisterLVServiceServer(grpcServer, lvmd.NewLVService(dcm, ocm, notifier))
 	grpc_health_v1.RegisterHealthServer(grpcServer, lvmd.NewHealthService())
 
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	ctx, stop := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
 	go func() {
@@ -122,7 +141,19 @@ func subMain(ctx context.Context) error {
 		}
 	}()
 
-	return grpcServer.Serve(lis)
+	if err := grpcServer.Serve(lis); err != nil {
+		return err
+	}
+
+	if errors.Is(context.Cause(ctx), config.ErrConfigModified) {
+		// if the config was modified while running, restart the process
+		// use the command context here as this wasn't cancelled
+		return subMain(cmdCtx)
+	} else if err := ctx.Err(); err != nil && !errors.Is(err, context.Canceled) {
+		logger.Error(err, "error while running lvmd, exiting abnormally")
+		return err
+	}
+	return nil
 }
 
 // Execute adds all child commands to the root command and sets flags appropriately.
@@ -138,6 +169,7 @@ func Execute() {
 func init() {
 	rootCmd.PersistentFlags().StringVar(&cfgFilePath, "config", filepath.Join("/etc", "topolvm", "lvmd.yaml"), "config file")
 	rootCmd.PersistentFlags().StringVar(&lvmPath, "lvm-path", "", "lvm command path on the host OS")
+	rootCmd.PersistentFlags().BoolVar(&hotReloadConfig, "hot-reload", false, "watch and reload configuration file dynamically")
 
 	goflags := flag.NewFlagSet("klog", flag.ExitOnError)
 	klog.InitFlags(goflags)
