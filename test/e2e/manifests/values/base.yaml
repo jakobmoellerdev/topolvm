@@ -42,7 +42,7 @@ lvmd:
         overprovision-ratio: 5.0
     - name: "volume-health"
       volume-group: "node1-volume-health"
-      default: true
+      spare-gb: 1
   lvcreateOptionClasses:
     - name: "raid1"
       options:

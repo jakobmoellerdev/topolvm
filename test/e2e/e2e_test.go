@@ -336,27 +336,36 @@ func testE2E() {
 		Expect(err).ShouldNot(HaveOccurred())
 
 		By("confirming that the lv correspond to LogicalVolume resource is registered in LVM")
-		var pvc corev1.PersistentVolumeClaim
-		err = getObjects(&pvc, "pvc", "-n", ns, "topo-pvc")
-		Expect(err).ShouldNot(HaveOccurred())
 		Eventually(func() error {
+			var pvc corev1.PersistentVolumeClaim
+			err = getObjects(&pvc, "pvc", "-n", ns, "topo-pvc")
+			Expect(err).ShouldNot(HaveOccurred())
 			return checkLVIsRegisteredInLVM(pvc.Spec.VolumeName)
 		}).Should(Succeed())
 
 		By("triggering a volume health partial activation failure")
-		out, err := exec.CommandContext(
-			ctx,
-			"sudo",
-			"dmsetup",
-			"remove",
-			"-f",
-			"/dev/mapper/e0", // This is the device name that is used in the volume health test vg for the crypt setup
-		).CombinedOutput()
-		if err != nil {
-			GinkgoT().Logf(err.Error())
+		var failureDeviceCount int
+		if nonControlPlaneNodeCount == 0 {
+			failureDeviceCount = 1
+		} else {
+			failureDeviceCount = nonControlPlaneNodeCount
 		}
-		if len(out) > 0 {
-			GinkgoT().Log(string(out))
+		for i := 0; i < failureDeviceCount; i++ {
+			out, err := exec.CommandContext(
+				ctx,
+				"sudo",
+				"dmsetup",
+				"remove",
+				"-f",
+				// This is the device name that is used in the volume health test vg for the crypt setup
+				fmt.Sprintf("/dev/mapper/e%v", i+1),
+			).CombinedOutput()
+			if err != nil {
+				GinkgoT().Logf(err.Error())
+			}
+			if len(out) > 0 {
+				GinkgoT().Log(string(out))
+			}
 		}
 
 		By("confirming that a VolumeConditionAbnormal event has occurred")
@@ -367,7 +376,9 @@ func testE2E() {
 			var events corev1.EventList
 			err = getObjects(&events, "events", "-n", ns, "--field-selector="+fieldSelector)
 			Expect(err).ShouldNot(HaveOccurred())
-			Expect(len(events.Items)).To(BeNumerically(">", 0), "there should be at least one event regarding an abnormal volume condition")
+			Expect(len(events.Items)).To(BeNumerically(">", 0),
+				"there should be at least one event regarding an abnormal volume condition",
+			)
 		})
 
 		By("deleting the Pod and PVC")
