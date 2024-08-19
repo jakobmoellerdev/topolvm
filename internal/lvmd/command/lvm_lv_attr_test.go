@@ -7,15 +7,15 @@ import (
 	"testing"
 )
 
-func TestParsedLvAttr(t *testing.T) {
-	NoError := func(t *testing.T, err error, args ...string) bool {
+func TestParsedLVAttr(t *testing.T) {
+	noError := func(t *testing.T, err error, args ...string) bool {
 		if err != nil {
 			t.Helper()
 			out := fmt.Sprintf("received unexpected error: %v", err)
 			if len(args) > 0 {
 				out = fmt.Sprintf("%s, %v", out, strings.Join(args, ","))
 			}
-			t.Errorf(out)
+			t.Error(out)
 		}
 
 		return true
@@ -27,13 +27,13 @@ func TestParsedLvAttr(t *testing.T) {
 	tests := []struct {
 		name    string
 		args    args
-		want    LvAttr
+		want    LVAttr
 		wantErr func(*testing.T, error, ...string) bool
 	}{
 		{
 			"Basic LV",
 			args{raw: "-wi-a-----"},
-			LvAttr{
+			LVAttr{
 				VolumeType:       VolumeTypeDefault,
 				Permissions:      PermissionsWriteable,
 				AllocationPolicy: AllocationPolicyInherited,
@@ -43,13 +43,14 @@ func TestParsedLvAttr(t *testing.T) {
 				OpenTarget:       OpenTargetNone,
 				Zero:             ZeroFalse,
 				VolumeHealth:     VolumeHealthOK,
+				SkipActivation:   SkipActivationFalse,
 			},
-			NoError,
+			noError,
 		},
 		{
 			"RAID Config without Initial Sync",
 			args{raw: "Rwi-a-r---"},
-			LvAttr{
+			LVAttr{
 				VolumeType:       VolumeTypeRAIDNoInitialSync,
 				Permissions:      PermissionsWriteable,
 				AllocationPolicy: AllocationPolicyInherited,
@@ -59,13 +60,14 @@ func TestParsedLvAttr(t *testing.T) {
 				OpenTarget:       OpenTargetRaid,
 				Zero:             ZeroFalse,
 				VolumeHealth:     VolumeHealthOK,
+				SkipActivation:   SkipActivationFalse,
 			},
-			NoError,
+			noError,
 		},
 		{
 			"ThinPool with Zeroing",
 			args{raw: "twi-a-tz--"},
-			LvAttr{
+			LVAttr{
 				VolumeType:       VolumeTypeThinPool,
 				Permissions:      PermissionsWriteable,
 				AllocationPolicy: AllocationPolicyInherited,
@@ -75,18 +77,19 @@ func TestParsedLvAttr(t *testing.T) {
 				OpenTarget:       OpenTargetThin,
 				Zero:             ZeroTrue,
 				VolumeHealth:     VolumeHealthOK,
+				SkipActivation:   SkipActivationFalse,
 			},
-			NoError,
+			noError,
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := ParsedLvAttr(tt.args.raw)
-			if !tt.wantErr(t, err, fmt.Sprintf("ParsedLvAttr(%v)", tt.args.raw)) {
+			got, err := ParsedLVAttr(tt.args.raw)
+			if !tt.wantErr(t, err, fmt.Sprintf("ParsedLVAttr(%v)", tt.args.raw)) {
 				return
 			}
 			if tt.want.String() != got.String() {
-				t.Errorf("ParsedLvAttr() = %v, want %v, raw %v", got, tt.want, tt.args.raw)
+				t.Errorf("ParsedLVAttr() = %v, want %v, raw %v", got, tt.want, tt.args.raw)
 			}
 		})
 	}
@@ -207,12 +210,36 @@ func TestVerifyHealth(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			lvAttr, err := ParsedLvAttr(tt.rawAttr)
+			lvAttr, err := ParsedLVAttr(tt.rawAttr)
 			if err != nil {
-				t.Fatalf("ParsedLvAttr() error = %v", err)
+				t.Fatalf("ParsedLVAttr() error = %v", err)
 			}
 			if err := lvAttr.VerifyHealth(); !errors.Is(err, tt.wantErr) {
 				t.Errorf("VerifyHealth() error = %v, wantErr %v", err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestLVAttrString(t *testing.T) {
+	for _, tt := range []struct {
+		name    string
+		rawAttr string
+		want    string
+	}{
+		{
+			name:    "Basic LV",
+			rawAttr: "-wi-a-----",
+			want:    "-wi-a-----",
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			attr, err := ParsedLVAttr(tt.rawAttr)
+			if err != nil {
+				t.Fatalf("ParsedLvAttr() error = %v", err)
+			}
+			if got := attr.String(); got != tt.want {
+				t.Errorf("String() = %v, want %v", got, tt.want)
 			}
 		})
 	}

@@ -358,7 +358,7 @@ func testE2E() {
 				"remove",
 				"-f",
 				// This is the device name that is used in the volume health test vg for the crypt setup
-				fmt.Sprintf("/dev/mapper/e%v", i+1),
+				fmt.Sprintf("/dev/mapper/crypt-%v", i+1),
 			).CombinedOutput()
 			if err != nil {
 				GinkgoT().Logf(err.Error())

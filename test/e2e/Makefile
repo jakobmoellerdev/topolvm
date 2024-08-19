@@ -247,9 +247,9 @@ common/create-vg:
 	$(SUDO) losetup -f $(BACKING_STORE)/backing_store$(ID)_8; \
 	$(SUDO) losetup -f $(BACKING_STORE)/backing_store$(ID)_9; \
 	echo test | $(SUDO) cryptsetup open --type plain \
-		$$($(SUDO) losetup -j $(BACKING_STORE)/backing_store$(ID)_8 | cut -d: -f1) e$(ID); \
+		$$($(SUDO) losetup -j $(BACKING_STORE)/backing_store$(ID)_8 | cut -d: -f1) crypt-$(ID); \
 	$(SUDO) vgcreate -y node$(ID)-volume-health \
-		/dev/mapper/e$(ID) \
+		/dev/mapper/crypt-$(ID) \
 		$$($(SUDO) losetup -j $(BACKING_STORE)/backing_store$(ID)_9 | cut -d: -f1)
 
 .PHONY: common/remove-vg
@@ -258,7 +258,7 @@ common/remove-vg:
 		$(SUDO) vgremove -ffy node$(ID)-$${name}; \
 	done; \
 	$(SUDO) vgremove -ffy node$(ID)-volume-health || true
-	$(SUDO) dmsetup remove -f /dev/mapper/e$(ID) || true
+	$(SUDO) dmsetup remove -f /dev/mapper/crypt-$(ID) || true
 	for i in $$(seq 9); do \
 		$(SUDO) pvremove -ffy $$($(SUDO) losetup -j $(BACKING_STORE)/backing_store$(ID)_$${i} | cut -d: -f1); \
 		$(SUDO) losetup -d $$($(SUDO) losetup -j $(BACKING_STORE)/backing_store$(ID)_$${i} | cut -d: -f1); \

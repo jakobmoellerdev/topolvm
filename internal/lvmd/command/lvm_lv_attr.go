@@ -154,11 +154,11 @@ const (
 	SkipActivationFalse SkipActivation = '-'
 )
 
-// LvAttr has mapped lv_attr information, see https://linux.die.net/man/8/lvs
+// LVAttr has mapped lv_attr information, see https://linux.die.net/man/8/lvs
 // It is a complete parsing of the entire attribute byte flags that is attached to each LV.
 // This is useful when attaching logic to the state of an LV as the state of an LV can be determined
 // from the Attributes, e.g. for determining whether an LV is considered a Thin-Pool or not.
-type LvAttr struct {
+type LVAttr struct {
 	VolumeType
 	Permissions
 	AllocationPolicy
@@ -173,12 +173,12 @@ type LvAttr struct {
 
 const lvAttrLength = 10
 
-func ParsedLvAttr(raw string) (LvAttr, error) {
+func ParsedLVAttr(raw string) (LVAttr, error) {
 	if len(raw) != lvAttrLength {
-		return LvAttr{}, fmt.Errorf("%s is an invalid length lv_attr, expected %v, but got %v",
+		return LVAttr{}, fmt.Errorf("%s is an invalid length lv_attr, expected %v, but got %v",
 			raw, lvAttrLength, len(raw))
 	}
-	return LvAttr{
+	return LVAttr{
 		VolumeType(raw[0]),
 		Permissions(raw[1]),
 		AllocationPolicy(raw[2]),
@@ -192,9 +192,9 @@ func ParsedLvAttr(raw string) (LvAttr, error) {
 	}, nil
 }
 
-func (l LvAttr) String() string {
+func (l LVAttr) String() string {
 	return fmt.Sprintf(
-		"%c%c%c%c%c%c%c%c%c",
+		"%c%c%c%c%c%c%c%c%c%c",
 		l.VolumeType,
 		l.Permissions,
 		l.AllocationPolicy,
@@ -204,13 +204,14 @@ func (l LvAttr) String() string {
 		l.OpenTarget,
 		l.Zero,
 		l.VolumeHealth,
+		l.SkipActivation,
 	)
 }
 
 // VerifyHealth checks the health of the logical volume based on the attributes, mainly
 // bit 9 (volume health indicator) based on bit 1 (volume type indicator)
 // All failed known states are reported with an error message.
-func (l LvAttr) VerifyHealth() error {
+func (l LVAttr) VerifyHealth() error {
 	if l.VolumeHealth == VolumeHealthPartialActivation {
 		return ErrPartialActivation
 	}

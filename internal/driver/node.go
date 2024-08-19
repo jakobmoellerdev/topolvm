@@ -551,7 +551,7 @@ func (s *nodeServerNoLocked) NodeGetInfo(ctx context.Context, req *csi.NodeGetIn
 }
 
 func getVolumeCondition(lv *proto.LogicalVolume) (*csi.VolumeCondition, error) {
-	attr, err := command.ParsedLvAttr(lv.GetAttr())
+	attr, err := command.ParsedLVAttr(lv.GetAttr())
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse attributes returned from logical volume service: %w", err)
 	}
