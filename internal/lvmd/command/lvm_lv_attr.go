@@ -75,7 +75,7 @@ const (
 	AllocationPolicyClingLocked      AllocationPolicy = 'L'
 	AllocationPolicyNormal           AllocationPolicy = 'n'
 	AllocationPolicyNormalLocked     AllocationPolicy = 'N'
-	AllocationPolicyNone                              = '-'
+	AllocationPolicyNone             AllocationPolicy = '-'
 )
 
 type Minor rune
@@ -114,13 +114,13 @@ const (
 type OpenTarget rune
 
 const (
-	OpenTargetMirror   = 'm'
-	OpenTargetRaid     = 'r'
-	OpenTargetSnapshot = 's'
-	OpenTargetThin     = 't'
-	OpenTargetUnknown  = 'u'
-	OpenTargetVirtual  = 'v'
-	OpenTargetNone     = '-'
+	OpenTargetMirror   OpenTarget = 'm'
+	OpenTargetRaid     OpenTarget = 'r'
+	OpenTargetSnapshot OpenTarget = 's'
+	OpenTargetThin     OpenTarget = 't'
+	OpenTargetUnknown  OpenTarget = 'u'
+	OpenTargetVirtual  OpenTarget = 'v'
+	OpenTargetNone     OpenTarget = '-'
 )
 
 type Zero rune
@@ -133,18 +133,18 @@ const (
 type VolumeHealth rune
 
 const (
-	VolumeHealthPartialActivation        = 'p'
-	VolumeHealthUnknown                  = 'X'
-	VolumeHealthOK                       = '-'
-	VolumeHealthRAIDRefreshNeeded        = 'r'
-	VolumeHealthRAIDMismatchesExist      = 'm'
-	VolumeHealthRAIDWriteMostly          = 'w'
-	VolumeHealthRAIDReshaping            = 's'
-	VolumeHealthRAIDReshapeRemoved       = 'R'
-	VolumeHealthThinFailed               = 'F'
-	VolumeHealthThinPoolOutOfDataSpace   = 'D'
-	VolumeHealthThinPoolMetadataReadOnly = 'M'
-	VolumeHealthWriteCacheError          = 'E'
+	VolumeHealthPartialActivation        VolumeHealth = 'p'
+	VolumeHealthUnknown                  VolumeHealth = 'X'
+	VolumeHealthOK                       VolumeHealth = '-'
+	VolumeHealthRAIDRefreshNeeded        VolumeHealth = 'r'
+	VolumeHealthRAIDMismatchesExist      VolumeHealth = 'm'
+	VolumeHealthRAIDWriteMostly          VolumeHealth = 'w'
+	VolumeHealthRAIDReshaping            VolumeHealth = 's'
+	VolumeHealthRAIDReshapeRemoved       VolumeHealth = 'R'
+	VolumeHealthThinFailed               VolumeHealth = 'F'
+	VolumeHealthThinPoolOutOfDataSpace   VolumeHealth = 'D'
+	VolumeHealthThinPoolMetadataReadOnly VolumeHealth = 'M'
+	VolumeHealthWriteCacheError          VolumeHealth = 'E'
 )
 
 type SkipActivation rune

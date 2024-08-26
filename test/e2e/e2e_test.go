@@ -4,7 +4,6 @@ import (
 	_ "embed"
 	"errors"
 	"fmt"
-	"os/exec"
 	"strconv"
 	"strings"
 	"time"
@@ -336,10 +335,11 @@ func testE2E() {
 		Expect(err).ShouldNot(HaveOccurred())
 
 		By("confirming that the lv correspond to LogicalVolume resource is registered in LVM")
-		Eventually(func() error {
+		Eventually(func(g Gomega) error {
 			var pvc corev1.PersistentVolumeClaim
-			err = getObjects(&pvc, "pvc", "-n", ns, "topo-pvc")
-			Expect(err).ShouldNot(HaveOccurred())
+			if err = getObjects(&pvc, "pvc", "-n", ns, "topo-pvc"); err != nil {
+				return err
+			}
 			return checkLVIsRegisteredInLVM(pvc.Spec.VolumeName)
 		}).Should(Succeed())
 
@@ -351,17 +351,19 @@ func testE2E() {
 			failureDeviceCount = nonControlPlaneNodeCount
 		}
 		for i := 0; i < failureDeviceCount; i++ {
-			out, err := exec.CommandContext(
-				ctx,
-				"sudo",
+			out, err := execAtLocal("sudo",
+				nil,
 				"dmsetup",
 				"remove",
 				"-f",
 				// This is the device name that is used in the volume health test vg for the crypt setup
 				fmt.Sprintf("/dev/mapper/crypt-%v", i+1),
-			).CombinedOutput()
+			)
 			if err != nil {
-				GinkgoT().Logf(err.Error())
+				Expect(err.Error()).Should(ContainSubstring(fmt.Sprintf(
+					"remove ioctl on crypt-%v  failed: Device or resource busy", i+1)),
+					"The only accepted error for the dmsetup remove command is a busy device "+
+						"due to removing it while it is active")
 			}
 			if len(out) > 0 {
 				GinkgoT().Log(string(out))
@@ -369,17 +371,17 @@ func testE2E() {
 		}
 
 		By("confirming that a VolumeConditionAbnormal event has occurred")
-		fieldSelector := "involvedObject.kind=Pod," +
-			"involvedObject.name=ubuntu," +
-			"reason=VolumeConditionAbnormal"
-		Eventually(func() {
+		fieldSelector := "reason=VolumeConditionAbnormal"
+		Eventually(func() error {
 			var events corev1.EventList
-			err = getObjects(&events, "events", "-n", ns, "--field-selector="+fieldSelector)
-			Expect(err).ShouldNot(HaveOccurred())
-			Expect(len(events.Items)).To(BeNumerically(">", 0),
-				"there should be at least one event regarding an abnormal volume condition",
-			)
-		})
+			if err = getObjects(&events, "events", "-n", ns, "--field-selector="+fieldSelector); err != nil {
+				return err
+			}
+			if len(events.Items) == 0 {
+				return errors.New("no events found, there should be at least one event regarding an abnormal volume condition")
+			}
+			return nil
+		}).Should(Succeed())
 
 		By("deleting the Pod and PVC")
 		_, err = kubectlWithInput(podYaml, "delete", "--now=true", "-n", ns, "-f", "-")

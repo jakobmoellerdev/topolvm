@@ -247,7 +247,7 @@ common/create-vg:
 	$(SUDO) losetup -f $(BACKING_STORE)/backing_store$(ID)_8; \
 	$(SUDO) losetup -f $(BACKING_STORE)/backing_store$(ID)_9; \
 	echo test | $(SUDO) cryptsetup open --type plain \
-		$$($(SUDO) losetup -j $(BACKING_STORE)/backing_store$(ID)_8 | cut -d: -f1) crypt-$(ID); \
+		$$($(SUDO) losetup -j $(BACKING_STORE)/backing_store$(ID)_8 | cut -d: -f1) crypt-$(ID)
 	$(SUDO) vgcreate -y node$(ID)-volume-health \
 		/dev/mapper/crypt-$(ID) \
 		$$($(SUDO) losetup -j $(BACKING_STORE)/backing_store$(ID)_9 | cut -d: -f1)
