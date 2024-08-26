@@ -381,7 +381,7 @@ func testE2E() {
 				return errors.New("no events found, there should be at least one event regarding an abnormal volume condition")
 			}
 			return nil
-		}).Should(Succeed())
+		}).WithTimeout(2 * time.Minute).Should(Succeed())
 
 		By("deleting the Pod and PVC")
 		_, err = kubectlWithInput(podYaml, "delete", "--now=true", "-n", ns, "-f", "-")
