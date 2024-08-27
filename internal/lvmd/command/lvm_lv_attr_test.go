@@ -88,7 +88,7 @@ func TestParsedLVAttr(t *testing.T) {
 			if !tt.wantErr(t, err, fmt.Sprintf("ParsedLVAttr(%v)", tt.args.raw)) {
 				return
 			}
-			if tt.want.String() != got.String() {
+			if (&tt.want).String() != got.String() {
 				t.Errorf("ParsedLVAttr() = %v, want %v, raw %v", got, tt.want, tt.args.raw)
 			}
 		})

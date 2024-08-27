@@ -173,12 +173,12 @@ type LVAttr struct {
 
 const lvAttrLength = 10
 
-func ParsedLVAttr(raw string) (LVAttr, error) {
+func ParsedLVAttr(raw string) (*LVAttr, error) {
 	if len(raw) != lvAttrLength {
-		return LVAttr{}, fmt.Errorf("%s is an invalid length lv_attr, expected %v, but got %v",
+		return nil, fmt.Errorf("%s is an invalid length lv_attr, expected %v, but got %v",
 			raw, lvAttrLength, len(raw))
 	}
-	return LVAttr{
+	return &LVAttr{
 		VolumeType(raw[0]),
 		Permissions(raw[1]),
 		AllocationPolicy(raw[2]),
@@ -192,7 +192,7 @@ func ParsedLVAttr(raw string) (LVAttr, error) {
 	}, nil
 }
 
-func (l LVAttr) String() string {
+func (l *LVAttr) String() string {
 	return fmt.Sprintf(
 		"%c%c%c%c%c%c%c%c%c%c",
 		l.VolumeType,
@@ -211,7 +211,7 @@ func (l LVAttr) String() string {
 // VerifyHealth checks the health of the logical volume based on the attributes, mainly
 // bit 9 (volume health indicator) based on bit 1 (volume type indicator)
 // All failed known states are reported with an error message.
-func (l LVAttr) VerifyHealth() error {
+func (l *LVAttr) VerifyHealth() error {
 	if l.VolumeHealth == VolumeHealthPartialActivation {
 		return ErrPartialActivation
 	}

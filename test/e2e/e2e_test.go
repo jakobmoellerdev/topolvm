@@ -343,6 +343,19 @@ func testE2E() {
 			return checkLVIsRegisteredInLVM(pvc.Spec.VolumeName)
 		}).Should(Succeed())
 
+		By("confirming the PVC is bound")
+		Eventually(func() error {
+			var pvc corev1.PersistentVolumeClaim
+			err := getObjects(&pvc, "pvc", "-n", ns, "topo-pvc")
+			if err != nil {
+				return fmt.Errorf("failed to get PVC. err: %w", err)
+			}
+			if pvc.Status.Phase != corev1.ClaimBound {
+				return errors.New("PVC is not bound")
+			}
+			return nil
+		}).Should(Succeed())
+
 		By("triggering a volume health partial activation failure")
 		var failureDeviceCount int
 		if nonControlPlaneNodeCount == 0 {
