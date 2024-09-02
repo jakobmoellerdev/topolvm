@@ -323,7 +323,7 @@ func testE2E() {
 		}).Should(Succeed())
 	})
 
-	It("should react to failure devices", func(ctx SpecContext) {
+	It("should react to failing devices with VolumeConditionAbnormal", func(ctx SpecContext) {
 		storageClass := "topolvm-provisioner-volumehealth"
 		By(fmt.Sprintf("deploying Pod with PVC based on StorageClass: %s", storageClass))
 		claimYAML := []byte(fmt.Sprintf(pvcTemplateYAML, "topo-pvc", "Filesystem", 200, storageClass))
@@ -354,6 +354,11 @@ func testE2E() {
 				return errors.New("PVC is not bound")
 			}
 			return nil
+		}).Should(Succeed())
+
+		By("confirming that the specified device is mounted in the Pod")
+		Eventually(func() error {
+			return verifyMountExists(ns, "ubuntu", "/test1")
 		}).Should(Succeed())
 
 		By("triggering a volume health partial activation failure")
