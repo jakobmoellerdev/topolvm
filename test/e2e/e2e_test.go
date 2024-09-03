@@ -335,7 +335,7 @@ func testE2E() {
 		Expect(err).ShouldNot(HaveOccurred())
 
 		By("confirming that the lv correspond to LogicalVolume resource is registered in LVM")
-		Eventually(func(g Gomega) error {
+		Eventually(func() error {
 			var pvc corev1.PersistentVolumeClaim
 			if err = getObjects(&pvc, "pvc", "-n", ns, "topo-pvc"); err != nil {
 				return err
@@ -377,14 +377,15 @@ func testE2E() {
 				// This is the device name that is used in the volume health test vg for the crypt setup
 				fmt.Sprintf("/dev/mapper/crypt-%v", i+1),
 			)
-			if err != nil {
-				Expect(err.Error()).Should(ContainSubstring(fmt.Sprintf(
-					"remove ioctl on crypt-%v  failed: Device or resource busy", i+1)),
-					"The only accepted error for the dmsetup remove command is a busy device "+
-						"due to removing it while it is active")
-			}
+			Expect(err).To(Or(
+				Not(HaveOccurred()),
+				ContainSubstring(fmt.Sprintf(
+					"remove ioctl on crypt-%v  failed: Device or resource busy", i+1,
+				), "The only accepted error for the dmsetup remove command is a busy device "+
+					"due to removing it while it is active"),
+			))
 			if len(out) > 0 {
-				GinkgoT().Log(string(out))
+				GinkgoT().Logf("dmsetup stdout=%s", string(out))
 			}
 		}
 

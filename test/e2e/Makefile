@@ -254,10 +254,9 @@ common/create-vg:
 
 .PHONY: common/remove-vg
 common/remove-vg:
-	for name in thick1 thick2 raid1-1 raid1-2 thin1; do \
+	for name in thick1 thick2 raid1-1 raid1-2 thin1 volume-health; do \
 		$(SUDO) vgremove -ffy node$(ID)-$${name}; \
 	done; \
-	$(SUDO) vgremove -ffy node$(ID)-volume-health || true
 	$(SUDO) dmsetup remove -f /dev/mapper/crypt-$(ID) || true
 	for i in $$(seq 9); do \
 		$(SUDO) pvremove -ffy $$($(SUDO) losetup -j $(BACKING_STORE)/backing_store$(ID)_$${i} | cut -d: -f1); \
